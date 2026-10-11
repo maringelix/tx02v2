@@ -27,12 +27,12 @@ The lab family (v2):
 
 | Capability | Status | Evidence |
 |---|---|---|
-| Formatting, validation, provider lock files (4 platforms) | `verified locally` | `make static` (`terraform-fmt`, `terraform-validate:*`, `terraform-lockfiles`); CI job `static` |
-| Lint and IaC security scan (tflint + azurerm ruleset, trivy HIGH/CRITICAL, plain and with the example inputs) | `verified locally` | `make static` (`tflint`, `trivy-config`, `trivy-config-tfvars`) |
-| Workflows, scripts, platform manifests and Helm values (actionlint, shellcheck, kubeconform, helm template with the chart SHA256) | `verified locally` | `make static` (`actionlint`, `shellcheck`, `kubeconform`, `helm-template`) |
-| Secret scan and repository policies (no real identifiers or GUIDs, pinned actions, contract tags on every taggable resource, v1 regressions) | `verified locally` | `make static` (`gitleaks`, `policy-*`, `repo-structure`, `version-consistency`) |
-| Contract v1 with dx02v2 (15 App Configuration keys, namespace, deployer RBAC, ClusterSecretStore) | `verified locally` | `make static` (`contract-appconfig`, `contract-platform`); [docs/CONTRATO.md](docs/CONTRATO.md) |
-| Terraform unit tests with a mocked azurerm provider (OIDC subjects, state account, ABAC role list = lab roles, budget, AKS, PostgreSQL, Key Vault, ACR, AGC + WAF, contract keys, role assignments, negative validations; 71 runs) | `verified locally` | `make test`; CI job `test` |
+| Formatting, validation, provider lock files (4 platforms) | `verified in CI` | `make static` (`terraform-fmt`, `terraform-validate:*`, `terraform-lockfiles`); CI job `static` |
+| Lint and IaC security scan (tflint + azurerm ruleset, trivy HIGH/CRITICAL, plain and with the example inputs) | `verified in CI` | `make static` (`tflint`, `trivy-config`, `trivy-config-tfvars`) |
+| Workflows, scripts, platform manifests and Helm values (actionlint, shellcheck, kubeconform, helm template with the chart SHA256) | `verified in CI` | `make static` (`actionlint`, `shellcheck`, `kubeconform`, `helm-template`) |
+| Secret scan and repository policies (no real identifiers or GUIDs, pinned actions, contract tags on every taggable resource, v1 regressions) | `verified in CI` | `make static` (`gitleaks`, `policy-*`, `repo-structure`, `version-consistency`) |
+| Contract v1 with dx02v2 (15 App Configuration keys, namespace, deployer RBAC, ClusterSecretStore) | `verified in CI` | `make static` (`contract-appconfig`, `contract-platform`); [docs/CONTRATO.md](docs/CONTRATO.md) |
+| Terraform unit tests with a mocked azurerm provider (OIDC subjects, state account, ABAC role list = lab roles, budget, AKS, PostgreSQL, Key Vault, ACR, AGC + WAF, contract keys, role assignments, negative validations; 71 runs) | `verified in CI` | `make test`; CI job `test` |
 | Bootstrap (resource providers, state account, lab resource group, GitHub OIDC identities, budget) | `not run in the cloud (v2)` | `terraform/bootstrap`, `docs/RUNBOOK.md` |
 | Lab apply (VNet, AKS 1.36, PostgreSQL 17, Key Vault, ACR, AGC + WAF, App Configuration contract) | `not run in the cloud (v2)` | `.github/workflows/terraform-apply.yml` |
 | Plan on pull requests | `not run in the cloud (v2)` | `.github/workflows/terraform-plan.yml` |
@@ -41,10 +41,9 @@ The lab family (v2):
 | HTTPS on the Application Gateway for Containers listener | `planned` | outside contract v1 (`docs/CONTRATO.md`) |
 | Repository settings as code (ruleset, environment `lab`) | `planned` | `scripts/repo-guardrails.sh`, `docs/PUBLICACAO.md` |
 
-`verified locally` rows ran in a Linux container (`HARNESS_STRICT=1 make verify`, 32 checks) before
-the first push; the CI has not run on GitHub yet. They move to `verified in CI` after the first green
-run of the CI jobs `static` and `test`. A cloud row changes only with a `cloud_run_report` issue
-(date, location, commits, cost, leftovers).
+`verified in CI` rows (`HARNESS_STRICT=1 make verify`, 32 checks) run on every pull request, on every
+push to `main` and weekly (CI jobs `static` and `test`). A cloud row changes only with a
+`cloud_run_report` issue (date, location, commits, cost, leftovers).
 
 ## Architecture
 

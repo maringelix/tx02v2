@@ -27,12 +27,12 @@ A família do lab (v2):
 
 | Capacidade | Status | Evidência |
 |---|---|---|
-| Formatação, validação, lock files de providers (4 plataformas) | `verificado localmente` | `make static` (`terraform-fmt`, `terraform-validate:*`, `terraform-lockfiles`); job `static` do CI |
-| Lint e scan de segurança da IaC (tflint + ruleset azurerm, trivy HIGH/CRITICAL, simples e com as entradas de exemplo) | `verificado localmente` | `make static` (`tflint`, `trivy-config`, `trivy-config-tfvars`) |
-| Workflows, scripts, manifests da plataforma e values do Helm (actionlint, shellcheck, kubeconform, helm template com o SHA256 do chart) | `verificado localmente` | `make static` (`actionlint`, `shellcheck`, `kubeconform`, `helm-template`) |
-| Scan de segredos e políticas do repositório (sem identificadores reais nem GUIDs, actions fixadas, tags do contrato em todo recurso que aceita tags, regressões do v1) | `verificado localmente` | `make static` (`gitleaks`, `policy-*`, `repo-structure`, `version-consistency`) |
-| Contrato v1 com o dx02v2 (15 chaves da App Configuration, namespace, RBAC do deployer, ClusterSecretStore) | `verificado localmente` | `make static` (`contract-appconfig`, `contract-platform`); [docs/CONTRATO.md](docs/CONTRATO.md) |
-| Testes unitários do Terraform com provider azurerm mockado (sujeitos OIDC, conta do state, lista ABAC = papéis do lab, budget, AKS, PostgreSQL, Key Vault, ACR, AGC + WAF, chaves do contrato, atribuições de papel, validações negativas; 71 casos) | `verificado localmente` | `make test`; job `test` do CI |
+| Formatação, validação, lock files de providers (4 plataformas) | `verificado no CI` | `make static` (`terraform-fmt`, `terraform-validate:*`, `terraform-lockfiles`); job `static` do CI |
+| Lint e scan de segurança da IaC (tflint + ruleset azurerm, trivy HIGH/CRITICAL, simples e com as entradas de exemplo) | `verificado no CI` | `make static` (`tflint`, `trivy-config`, `trivy-config-tfvars`) |
+| Workflows, scripts, manifests da plataforma e values do Helm (actionlint, shellcheck, kubeconform, helm template com o SHA256 do chart) | `verificado no CI` | `make static` (`actionlint`, `shellcheck`, `kubeconform`, `helm-template`) |
+| Scan de segredos e políticas do repositório (sem identificadores reais nem GUIDs, actions fixadas, tags do contrato em todo recurso que aceita tags, regressões do v1) | `verificado no CI` | `make static` (`gitleaks`, `policy-*`, `repo-structure`, `version-consistency`) |
+| Contrato v1 com o dx02v2 (15 chaves da App Configuration, namespace, RBAC do deployer, ClusterSecretStore) | `verificado no CI` | `make static` (`contract-appconfig`, `contract-platform`); [docs/CONTRATO.md](docs/CONTRATO.md) |
+| Testes unitários do Terraform com provider azurerm mockado (sujeitos OIDC, conta do state, lista ABAC = papéis do lab, budget, AKS, PostgreSQL, Key Vault, ACR, AGC + WAF, chaves do contrato, atribuições de papel, validações negativas; 71 casos) | `verificado no CI` | `make test`; job `test` do CI |
 | Bootstrap (resource providers, conta do state, grupo do lab, identidades OIDC do GitHub, budget) | `não executado em nuvem (v2)` | `terraform/bootstrap`, `docs/RUNBOOK.md` |
 | Apply do lab (VNet, AKS 1.36, PostgreSQL 17, Key Vault, ACR, AGC + WAF, contrato na App Configuration) | `não executado em nuvem (v2)` | `.github/workflows/terraform-apply.yml` |
 | Plan em pull requests | `não executado em nuvem (v2)` | `.github/workflows/terraform-plan.yml` |
@@ -41,10 +41,9 @@ A família do lab (v2):
 | HTTPS no listener do Application Gateway for Containers | `planejado` | fora do contrato v1 (`docs/CONTRATO.md`) |
 | Configurações do repositório como código (ruleset, environment `lab`) | `planejado` | `scripts/repo-guardrails.sh`, `docs/PUBLICACAO.md` |
 
-As linhas `verificado localmente` rodaram num container Linux (`HARNESS_STRICT=1 make verify`, 32
-checks) antes do primeiro push; o CI ainda não rodou no GitHub. Elas viram `verificado no CI` depois
-da primeira execução verde dos jobs `static` e `test`. Uma linha de nuvem só muda com uma issue
-`cloud_run_report` (data, região, commits, custo, sobras).
+As linhas `verificado no CI` (`HARNESS_STRICT=1 make verify`, 32 checks) rodam em todo pull request,
+em todo push para a `main` e toda semana (jobs `static` e `test` do CI). Uma linha de nuvem só muda
+com uma issue `cloud_run_report` (data, região, commits, custo, sobras).
 
 ## Arquitetura
 

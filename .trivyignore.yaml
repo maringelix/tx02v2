@@ -1,0 +1,14 @@
+# Deliberate lab trade-offs only (docs/GUARDRAILS.md, section "Exceções"). Every entry needs a
+# `statement` and an `expired_at` at most ~7 months ahead; scripts/harness.sh enforces both and
+# trivy stops honoring an entry after its expiry date.
+misconfigurations:
+  - id: AZU-0012
+    paths:
+      - terraform/bootstrap/state.tf
+    statement: "Public endpoint of the state storage account on purpose: GitHub-hosted runners have no fixed IP. Shared keys are disabled (Entra ID only), the only container is private, every identity needs a Storage Blob Data role on that container, and blob versioning plus soft delete keep old state versions."
+    expired_at: 2027-04-30
+  - id: AZU-0013
+    paths:
+      - terraform/modules/keyvault/main.tf
+    statement: "Public endpoint of the lab Key Vault on purpose: GitHub-hosted runners (Terraform writes the secrets) and External Secrets in AKS (dynamic egress IP) reach it. RBAC authorization only, no access policies; only tx02v2-gha-apply (Secrets Officer), tx02v2-gha-plan and tx02v2-lab-eso (Secrets User) have data roles."
+    expired_at: 2027-04-30

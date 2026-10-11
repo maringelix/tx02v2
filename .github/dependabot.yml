@@ -1,0 +1,60 @@
+# Monthly dependency PRs: minor + patch grouped per ecosystem, majors one by one.
+# Review procedure: AGENTS.md (Dependency updater) and docs/SUSTENTACAO.md.
+# Harness tools (tools/), the platform charts and image digests (platform/versions.env,
+# platform/values) and the devcontainer image are updated by hand in the quarterly routine
+# (scripts/update-tool-checksums.sh; they must change together, check version-consistency).
+# The ignore rules below exist because those ranges are constrained elsewhere: review them in the
+# quarterly routine (docs/SUSTENTACAO.md).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    groups:
+      github-actions-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: terraform
+    directories:
+      - /terraform/bootstrap
+      - /terraform/envs/lab
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    groups:
+      terraform-minor-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # A new azurerm major changes the constraint "~> 5.9" that every terraform/modules/*/versions.tf
+      # repeats (Dependabot only edits the two roots, so version-consistency would fail) and needs
+      # the provider upgrade guide. Minor and patch releases inside 5.x still arrive (lock files).
+      - dependency-name: hashicorp/azurerm
+        update-types:
+          - version-update:semver-major
+
+  - package-ecosystem: pre-commit
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    groups:
+      pre-commit-minor-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # The gitleaks hook follows GITLEAKS_VERSION of tools/versions.env (check
+      # version-consistency): bump both with scripts/update-tool-checksums.sh gitleaks <version>.
+      - dependency-name: "*gitleaks*"

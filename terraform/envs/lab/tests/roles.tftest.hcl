@@ -1,0 +1,254 @@
+# Every role assignment of the lab root (roles.tf) and the federated credentials of the platform
+# controllers. The set of roles used here must equal the ABAC list of tx02v2-gha-apply
+# (terraform/bootstrap/tests/roles.tftest.hcl): both come from modules/role-ids.
+
+mock_provider "azurerm" {
+  source = "../../tests/mocks"
+}
+
+variables {
+  api_server_authorized_ip_ranges = ["203.0.113.10/32"]
+  deploy_principal_id             = "dddddddd-dddd-dddd-dddd-dddddddddddd"
+  cluster_admin_principal_ids     = ["11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"]
+  app_deployer_principal_ids      = ["eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"]
+}
+
+# Distinct IDs for the instances that share a mock default (override_resource replaces the
+# defaults, so every consumed computed value is set).
+override_resource {
+  target = azurerm_user_assigned_identity.aks
+  values = {
+    id           = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ManagedIdentity/userAssignedIdentities/tx02v2-lab-aks"
+    principal_id = "33333333-3333-3333-3333-333333333333"
+    client_id    = "44444444-4444-4444-4444-444444444444"
+  }
+}
+
+override_resource {
+  target = azurerm_user_assigned_identity.eso
+  values = {
+    id           = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ManagedIdentity/userAssignedIdentities/tx02v2-lab-eso"
+    principal_id = "cccccccc-cccc-cccc-cccc-cccccccccccc"
+    client_id    = "55555555-5555-5555-5555-555555555555"
+  }
+}
+
+override_resource {
+  target = azurerm_user_assigned_identity.alb
+  values = {
+    id           = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ManagedIdentity/userAssignedIdentities/tx02v2-lab-alb"
+    principal_id = "ffffffff-ffff-ffff-ffff-ffffffffffff"
+    client_id    = "66666666-6666-6666-6666-666666666666"
+  }
+}
+
+override_resource {
+  target = azurerm_user_assigned_identity.kubelet
+  values = {
+    id           = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ManagedIdentity/userAssignedIdentities/tx02v2-lab-kubelet"
+    principal_id = "77777777-7777-7777-7777-777777777777"
+    client_id    = "88888888-8888-8888-8888-888888888888"
+  }
+}
+
+override_resource {
+  target = module.network.azurerm_subnet.aks_nodes
+  values = { id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.Network/virtualNetworks/tx02v2-lab-vnet/subnets/aks-nodes" }
+}
+
+override_resource {
+  target = module.network.azurerm_subnet.agc
+  values = { id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.Network/virtualNetworks/tx02v2-lab-vnet/subnets/agc" }
+}
+
+override_resource {
+  target = module.network.azurerm_subnet.postgres
+  values = { id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.Network/virtualNetworks/tx02v2-lab-vnet/subnets/postgres" }
+}
+
+run "the_lab_assigns_exactly_the_abac_roles" {
+  command = apply
+
+  assert {
+    condition = toset(concat(
+      [for r in azurerm_role_assignment.pre_cluster : basename(r.role_definition_id)],
+      [for r in azurerm_role_assignment.lab : basename(r.role_definition_id)],
+    )) == toset(values(module.roles.lab_assignable))
+    error_message = "The roles assigned by the lab root must equal the ABAC list of tx02v2-gha-apply (modules/role-ids)."
+  }
+
+  assert {
+    condition = alltrue([
+      for r in concat(values(azurerm_role_assignment.pre_cluster), values(azurerm_role_assignment.lab)) :
+      startswith(r.role_definition_id, "/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.Authorization/roleDefinitions/")
+    ])
+    error_message = "Role definitions are referenced by ID (no name lookups, nothing outside modules/role-ids)."
+  }
+
+  assert {
+    condition = alltrue([
+      for r in concat(values(azurerm_role_assignment.pre_cluster), values(azurerm_role_assignment.lab)) :
+      r.scope == "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab" ||
+      startswith(r.scope, "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/")
+    ])
+    error_message = "Every lab role assignment must be scoped to tx02v2-lab or a resource inside it (never the subscription)."
+  }
+
+  assert {
+    condition = { for k, r in azurerm_role_assignment.lab : k => "${basename(r.role_definition_id)} ${r.principal_id} ${r.scope}" } == {
+      "kubelet-acr-pull"                                                   = "7f951dda-4ed3-4680-a7ca-43fe172d538d 77777777-7777-7777-7777-777777777777 /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ContainerRegistry/registries/tx02v2labb602d594"
+      "deploy-acr-push"                                                    = "8311e382-0749-4cb8-b61a-304f252e45ec dddddddd-dddd-dddd-dddd-dddddddddddd /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ContainerRegistry/registries/tx02v2labb602d594"
+      "deploy-aks-cluster-user"                                            = "4abbcc35-e782-43d8-92c5-2d3f1bd2253f dddddddd-dddd-dddd-dddd-dddddddddddd /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ContainerService/managedClusters/tx02v2-lab"
+      "deploy-appconfig-reader"                                            = "516239f1-63e1-4d78-a4de-a74fb236a071 dddddddd-dddd-dddd-dddd-dddddddddddd /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.AppConfiguration/configurationStores/tx02v2-lab-b602d594"
+      "eso-keyvault-secrets-user"                                          = "4633458b-17de-408a-b874-0445c86b69e6 cccccccc-cccc-cccc-cccc-cccccccccccc /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.KeyVault/vaults/tx02v2-lab-b602d594"
+      "alb-agc-configuration-manager"                                      = "fbc52c3f-28ad-4303-a892-8a056630b8f1 ffffffff-ffff-ffff-ffff-ffffffffffff /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab"
+      "alb-agc-subnet-network-contributor"                                 = "4d97b98b-1d4f-4787-a291-c67834d212e7 ffffffff-ffff-ffff-ffff-ffffffffffff /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.Network/virtualNetworks/tx02v2-lab-vnet/subnets/agc"
+      "cluster-admin-11111111-1111-1111-1111-111111111111"                 = "b1ff04bb-8a4e-4dc4-8eb5-8693973ce19b 11111111-1111-1111-1111-111111111111 /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ContainerService/managedClusters/tx02v2-lab"
+      "cluster-admin-22222222-2222-2222-2222-222222222222"                 = "b1ff04bb-8a4e-4dc4-8eb5-8693973ce19b 22222222-2222-2222-2222-222222222222 /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ContainerService/managedClusters/tx02v2-lab"
+      "app-deployer-acr-push-eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"         = "8311e382-0749-4cb8-b61a-304f252e45ec eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ContainerRegistry/registries/tx02v2labb602d594"
+      "app-deployer-aks-cluster-user-eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee" = "4abbcc35-e782-43d8-92c5-2d3f1bd2253f eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ContainerService/managedClusters/tx02v2-lab"
+      "app-deployer-appconfig-reader-eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee" = "516239f1-63e1-4d78-a4de-a74fb236a071 eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.AppConfiguration/configurationStores/tx02v2-lab-b602d594"
+    }
+    error_message = "Lab role assignments must match docs/CONTRATO.md and docs/ARQUITETURA.md exactly."
+  }
+
+  assert {
+    condition = { for k, r in azurerm_role_assignment.pre_cluster : k => "${basename(r.role_definition_id)} ${r.principal_id} ${r.scope}" } == {
+      "aks-control-plane-node-subnet"      = "4d97b98b-1d4f-4787-a291-c67834d212e7 33333333-3333-3333-3333-333333333333 /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.Network/virtualNetworks/tx02v2-lab-vnet/subnets/aks-nodes"
+      "aks-control-plane-kubelet-identity" = "f1a07417-d97a-45cb-824c-7a7467783830 33333333-3333-3333-3333-333333333333 /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ManagedIdentity/userAssignedIdentities/tx02v2-lab-kubelet"
+    }
+    error_message = "Before the cluster, the control plane identity gets Network Contributor on the node subnet and Managed Identity Operator on the kubelet identity, nothing else."
+  }
+
+  assert {
+    condition = alltrue([
+      for r in values(azurerm_role_assignment.lab) :
+      !(contains(["dddddddd-dddd-dddd-dddd-dddddddddddd", "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"], r.principal_id) && strcontains(r.scope, "Microsoft.KeyVault"))
+    ])
+    error_message = "Deployers (dx02v2-gha-deploy and app_deployer_principal_ids) get nothing on Key Vault (contract): ESO reads the secrets."
+  }
+}
+
+# Contract: every app_deployer_principal_ids entry gets exactly the Azure roles of
+# dx02v2-gha-deploy, on the same scopes, and the ABAC list still equals what the lab assigns.
+run "app_deployers_get_the_roles_of_the_deploy_identity" {
+  command = apply
+
+  variables {
+    app_deployer_principal_ids = ["eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"]
+  }
+
+  assert {
+    condition = alltrue([
+      for id in ["eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"] :
+      toset([for r in values(azurerm_role_assignment.lab) : "${basename(r.role_definition_id)} ${r.scope}" if r.principal_id == id]) ==
+      toset([for r in values(azurerm_role_assignment.lab) : "${basename(r.role_definition_id)} ${r.scope}" if r.principal_id == "dddddddd-dddd-dddd-dddd-dddddddddddd"])
+    ])
+    error_message = "Each app deployer must get exactly the roles and scopes of dx02v2-gha-deploy."
+  }
+
+  assert {
+    condition = { for k, r in azurerm_role_assignment.lab : k => "${basename(r.role_definition_id)} ${r.principal_id} ${r.scope}" if startswith(k, "app-deployer-") } == {
+      "app-deployer-acr-push-eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"         = "8311e382-0749-4cb8-b61a-304f252e45ec eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ContainerRegistry/registries/tx02v2labb602d594"
+      "app-deployer-aks-cluster-user-eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee" = "4abbcc35-e782-43d8-92c5-2d3f1bd2253f eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ContainerService/managedClusters/tx02v2-lab"
+      "app-deployer-appconfig-reader-eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee" = "516239f1-63e1-4d78-a4de-a74fb236a071 eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.AppConfiguration/configurationStores/tx02v2-lab-b602d594"
+      "app-deployer-acr-push-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"         = "8311e382-0749-4cb8-b61a-304f252e45ec aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ContainerRegistry/registries/tx02v2labb602d594"
+      "app-deployer-aks-cluster-user-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" = "4abbcc35-e782-43d8-92c5-2d3f1bd2253f aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ContainerService/managedClusters/tx02v2-lab"
+      "app-deployer-appconfig-reader-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" = "516239f1-63e1-4d78-a4de-a74fb236a071 aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.AppConfiguration/configurationStores/tx02v2-lab-b602d594"
+    }
+    error_message = "App deployers get AcrPush on the registry, AKS Cluster User Role on the cluster and App Configuration Data Reader on the contract store, nothing else."
+  }
+
+  assert {
+    condition = toset(concat(
+      [for r in azurerm_role_assignment.pre_cluster : basename(r.role_definition_id)],
+      [for r in azurerm_role_assignment.lab : basename(r.role_definition_id)],
+    )) == toset(values(module.roles.lab_assignable))
+    error_message = "With app deployers, the roles assigned by the lab root must still equal the ABAC list of tx02v2-gha-apply."
+  }
+
+  assert {
+    condition     = length(azurerm_role_assignment.lab) == 15
+    error_message = "Lab role assignments: kubelet 1, deploy identity 3, ESO 1, ALB 2, cluster admins 2 and 3 per app deployer (2)."
+  }
+}
+
+# Without app deployers nothing extra is assigned, and the ABAC list (which never changes with
+# the inputs) still equals the roles of the lab root: no role may become unassigned.
+run "no_app_deployers_assign_nothing_extra" {
+  command = apply
+
+  variables {
+    app_deployer_principal_ids = []
+  }
+
+  assert {
+    condition     = length([for k in keys(azurerm_role_assignment.lab) : k if startswith(k, "app-deployer-")]) == 0
+    error_message = "An empty app_deployer_principal_ids must not create role assignments."
+  }
+
+  assert {
+    condition = toset(concat(
+      [for r in azurerm_role_assignment.pre_cluster : basename(r.role_definition_id)],
+      [for r in azurerm_role_assignment.lab : basename(r.role_definition_id)],
+    )) == toset(values(module.roles.lab_assignable))
+    error_message = "Without app deployers, the roles assigned by the lab root must still equal the ABAC list of tx02v2-gha-apply."
+  }
+
+  assert {
+    condition = { for k, r in azurerm_role_assignment.lab : k => "${basename(r.role_definition_id)} ${r.principal_id}" if startswith(k, "deploy-") } == {
+      "deploy-acr-push"         = "8311e382-0749-4cb8-b61a-304f252e45ec dddddddd-dddd-dddd-dddd-dddddddddddd"
+      "deploy-aks-cluster-user" = "4abbcc35-e782-43d8-92c5-2d3f1bd2253f dddddddd-dddd-dddd-dddd-dddddddddddd"
+      "deploy-appconfig-reader" = "516239f1-63e1-4d78-a4de-a74fb236a071 dddddddd-dddd-dddd-dddd-dddddddddddd"
+    }
+    error_message = "dx02v2-gha-deploy keeps its three roles without app deployers."
+  }
+
+  assert {
+    condition     = length(azurerm_role_assignment.lab) == 9
+    error_message = "Without app deployers the lab assigns 9 roles after the cluster exists (kubelet 1, deploy 3, ESO 1, ALB 2, admins 2)."
+  }
+}
+
+run "controller_identities_are_federated_with_the_cluster" {
+  command = apply
+
+  assert {
+    condition = (
+      azurerm_federated_identity_credential.eso.user_assigned_identity_id == azurerm_user_assigned_identity.eso.id &&
+      azurerm_federated_identity_credential.eso.subject == "system:serviceaccount:external-secrets:external-secrets" &&
+      azurerm_federated_identity_credential.eso.issuer == "https://eastus2.oic.prod-aks.azure.com/00000000-0000-0000-0000-000000000000/55555555-5555-5555-5555-555555555555/" &&
+      azurerm_federated_identity_credential.eso.audience == tolist(["api://AzureADTokenExchange"])
+    )
+    error_message = "tx02v2-lab-eso must trust only external-secrets/external-secrets from the AKS OIDC issuer (contract)."
+  }
+
+  assert {
+    condition = (
+      azurerm_federated_identity_credential.alb.name == "azure-alb-identity" &&
+      azurerm_federated_identity_credential.alb.user_assigned_identity_id == azurerm_user_assigned_identity.alb.id &&
+      azurerm_federated_identity_credential.alb.subject == "system:serviceaccount:azure-alb-system:alb-controller-sa" &&
+      azurerm_federated_identity_credential.alb.issuer == module.aks.oidc_issuer_url &&
+      azurerm_federated_identity_credential.alb.audience == tolist(["api://AzureADTokenExchange"])
+    )
+    error_message = "tx02v2-lab-alb must trust only azure-alb-system/alb-controller-sa (ALB Controller chart) from the AKS OIDC issuer."
+  }
+
+  assert {
+    condition     = [azurerm_user_assigned_identity.aks.name, azurerm_user_assigned_identity.kubelet.name, azurerm_user_assigned_identity.eso.name, azurerm_user_assigned_identity.alb.name] == ["tx02v2-lab-aks", "tx02v2-lab-kubelet", "tx02v2-lab-eso", "tx02v2-lab-alb"]
+    error_message = "Lab identity names follow the contract."
+  }
+
+  assert {
+    condition     = output.eso_identity_client_id == "55555555-5555-5555-5555-555555555555" && output.alb_identity_client_id == "66666666-6666-6666-6666-666666666666"
+    error_message = "platform/install.sh needs the client IDs of both controller identities."
+  }
+
+  assert {
+    condition = alltrue([
+      for t in [azurerm_user_assigned_identity.aks.tags, azurerm_user_assigned_identity.kubelet.tags, azurerm_user_assigned_identity.eso.tags, azurerm_user_assigned_identity.alb.tags] :
+      t == tomap({ Project = "tx02v2", Environment = "lab", ManagedBy = "terraform", Repository = "maringelix/tx02v2" })
+    ])
+    error_message = "Lab identities carry the contract tags."
+  }
+}

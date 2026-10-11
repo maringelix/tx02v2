@@ -1,0 +1,31 @@
+# Static values of the ALB Controller chart (Application Gateway for Containers, bring-your-own
+# deployment: the AGC resources are owned by Terraform). platform/install.sh adds
+# albController.podIdentity.clientID (client ID of the identity tx02v2-lab-alb).
+albController:
+  # The release and the controller share this namespace; the federated credential of
+  # tx02v2-lab-alb trusts system:serviceaccount:azure-alb-system:alb-controller-sa.
+  namespace: azure-alb-system
+
+  image:
+    # One tag for the controller, bootstrap and crds images (the chart has no per-image digest):
+    # install.sh checks the digests of the running pods against platform/versions.env.
+    tag: "1.12.2"
+
+  logLevel: info
+
+  # The chart installs the Gateway API CRDs (standard channel) the dx02v2 Gateway/HTTPRoute use.
+  installGatewayApiCRDs: true
+
+  # SecurityPolicy support (WAF policies referenced by WebApplicationFirewallPolicy objects).
+  securityPolicyFeatureFlag: true
+
+  controller:
+    # Two replicas with the chart's PodDisruptionBudget (minAvailable 1): node drains still work.
+    replicaCount: 2
+    resource:
+      requests:
+        cpu: "100m"
+        memory: "200Mi"
+      limits:
+        cpu: "400m"
+        memory: "400Mi"

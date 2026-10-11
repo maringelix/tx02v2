@@ -1,0 +1,118 @@
+# Destroys the lab. CLOUD-MUTATING: requires the typed confirmation "destroy tx02v2-lab" and the
+# `lab` environment approval. Order: platform/uninstall.sh (if the cluster exists) -> terraform
+# destroy -> scripts/leftovers.sh. Every step fails loudly; nothing is ignored. The bootstrap
+# (state, identities, budget, the empty tx02v2-lab resource group) stays. Not run in the cloud yet (v2).
+name: terraform-destroy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type exactly: destroy tx02v2-lab'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tx02v2-lab-cloud
+  cancel-in-progress: false
+
+jobs:
+  destroy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    environment: lab
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_APPLY_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      TF_STATE_STORAGE_ACCOUNT: ${{ vars.TF_STATE_STORAGE_ACCOUNT }}
+      TF_IN_AUTOMATION: "1"
+      TF_INPUT: "0"
+      TF_VAR_location: ${{ vars.LAB_LOCATION }}
+      TF_VAR_github_owner: ${{ github.repository_owner }}
+      TF_VAR_deploy_principal_id: ${{ vars.LAB_DEPLOY_PRINCIPAL_ID }}
+      TF_VAR_cluster_admin_principal_ids: ${{ vars.LAB_CLUSTER_ADMIN_PRINCIPAL_IDS }}
+      TF_VAR_app_deployer_principal_ids: ${{ vars.LAB_APP_DEPLOYER_PRINCIPAL_IDS || '[]' }}
+      TF_VAR_api_server_authorized_ip_ranges: ${{ vars.LAB_API_SERVER_AUTHORIZED_IP_RANGES }}
+      TF_VAR_allow_api_server_from_anywhere: ${{ vars.LAB_ALLOW_API_SERVER_FROM_ANYWHERE || 'false' }}
+      TF_VAR_enable_waf: ${{ vars.LAB_ENABLE_WAF || 'true' }}
+    steps:
+      - name: Check the confirmation and repository variables
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [[ "$CONFIRM" != "destroy tx02v2-lab" ]]; then
+            echo "::error::Confirmation mismatch: type exactly 'destroy tx02v2-lab'."
+            exit 1
+          fi
+          guid='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          json_list='^\[.*\]$'
+          problems=()
+          # <environment variable>:<repository variable it comes from>
+          for pair in ARM_CLIENT_ID:AZURE_APPLY_CLIENT_ID ARM_TENANT_ID:AZURE_TENANT_ID ARM_SUBSCRIPTION_ID:AZURE_SUBSCRIPTION_ID TF_VAR_deploy_principal_id:LAB_DEPLOY_PRINCIPAL_ID; do
+            v="${pair%%:*}"
+            [[ "${!v}" =~ $guid ]] || problems+=("${pair#*:} must be a lowercase GUID")
+          done
+          [[ "$TF_STATE_STORAGE_ACCOUNT" =~ ^tx02v2tfstate[0-9a-f]{8}$ ]] || problems+=("TF_STATE_STORAGE_ACCOUNT must be the bootstrap output state_storage_account_name")
+          [[ "$TF_VAR_location" =~ ^[a-z][a-z0-9]{2,30}$ ]] || problems+=("LAB_LOCATION must be the location given to the bootstrap, e.g. eastus2")
+          for pair in TF_VAR_cluster_admin_principal_ids:LAB_CLUSTER_ADMIN_PRINCIPAL_IDS TF_VAR_api_server_authorized_ip_ranges:LAB_API_SERVER_AUTHORIZED_IP_RANGES TF_VAR_app_deployer_principal_ids:LAB_APP_DEPLOYER_PRINCIPAL_IDS; do
+            v="${pair%%:*}"
+            [[ "${!v}" =~ $json_list ]] || problems+=("${pair#*:} must be a JSON list, e.g. [\"...\"]")
+          done
+          if ((${#problems[@]} > 0)); then
+            printf '::error::Repository variable problem: %s\n' "${problems[@]}"
+            echo "::error::Settings > Secrets and variables > Actions > Variables; names and values in docs/RUNBOOK.md (section 'Variáveis do GitHub')."
+            exit 1
+          fi
+          # Identifiers never reach the logs of a public repository.
+          for v in ARM_CLIENT_ID ARM_TENANT_ID ARM_SUBSCRIPTION_ID TF_VAR_deploy_principal_id; do
+            echo "::add-mask::${!v}"
+          done
+          echo "::add-mask::$(printf '%s' "$ARM_SUBSCRIPTION_ID" | sha1sum | cut -c1-8)"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install terraform, kubectl, helm and kubelogin (pinned, SHA256-verified)
+        run: |
+          bash scripts/install-tools.sh terraform kubectl helm kubelogin
+          echo "$GITHUB_WORKSPACE/.tools/bin" >> "$GITHUB_PATH"
+
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_APPLY_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Remove the platform layer while the cluster exists
+        run: |
+          clusters="$(az aks list --resource-group tx02v2-lab --query "[?name=='tx02v2-lab'] | length(@)" --output tsv)"
+          if [[ "$clusters" == 1 ]]; then
+            bash platform/uninstall.sh
+          else
+            echo "cluster tx02v2-lab not found: nothing to uninstall"
+          fi
+
+      - name: terraform init
+        run: terraform -chdir=terraform/envs/lab init -input=false -lockfile=readonly -backend-config="storage_account_name=$TF_STATE_STORAGE_ACCOUNT"
+
+      - name: terraform destroy
+        run: terraform -chdir=terraform/envs/lab destroy -auto-approve -input=false -no-color
+
+      # A fresh login: the Azure CLI tokens of the first login may expire during a long destroy.
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_APPLY_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Leftover check (must find nothing billable)
+        run: bash scripts/leftovers.sh --retry-for 900

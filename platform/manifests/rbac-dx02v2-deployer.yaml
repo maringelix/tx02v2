@@ -1,0 +1,60 @@
+# RBAC of the dx02v2 deployer (contract v1). With Azure RBAC for Kubernetes authorization, a
+# request no Azure role grants falls back to Kubernetes RBAC: dx02v2-gha-deploy has no Azure data
+# role on the cluster, so this binding (subject User = its object ID, plus any
+# app_deployer_principal_ids) is its only access, and only in the dx02v2 namespace.
+# Secrets are read-only: External Secrets Operator writes them, the deployer never does.
+# platform/render-manifests.sh replaces the placeholder line under `subjects:` with one
+# `kind: User` subject per object ID.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dx02v2-deployer
+  namespace: dx02v2
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["services", "configmaps", "serviceaccounts"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "events", "endpoints"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["gateways", "httproutes"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # The CRDs of ALB Controller 1.12.2 use singular-looking plural names (spec.names.plural):
+  # "healthcheckpolicies" or "webapplicationfirewallpolicies" would match nothing.
+  - apiGroups: ["alb.networking.azure.io"]
+    resources: ["healthcheckpolicy", "webapplicationfirewallpolicy"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["external-secrets.io"]
+    resources: ["externalsecrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dx02v2-deployers
+  namespace: dx02v2
+subjects:
+__DEPLOYER_SUBJECTS__
+roleRef:
+  kind: Role
+  name: dx02v2-deployer
+  apiGroup: rbac.authorization.k8s.io

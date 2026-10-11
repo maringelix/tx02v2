@@ -1,0 +1,84 @@
+# Installs (or removes) the platform layer on the lab cluster: ALB Controller (Application Gateway
+# for Containers), External Secrets Operator and platform/manifests. CLOUD-MUTATING: dispatch
+# manually after terraform-apply. tx02v2-gha-apply must be in LAB_CLUSTER_ADMIN_PRINCIPAL_IDS
+# (Azure Kubernetes Service RBAC Cluster Admin) and GitHub-hosted runners must reach the API server
+# (LAB_API_SERVER_AUTHORIZED_IP_RANGES, docs/ARQUITETURA.md). Not run in the cloud yet (v2).
+name: platform
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: install or uninstall
+        type: choice
+        options:
+          - install
+          - uninstall
+        default: install
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tx02v2-lab-cloud
+  cancel-in-progress: false
+
+jobs:
+  platform:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: lab
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      APP_DEPLOYER_PRINCIPAL_IDS: ${{ vars.LAB_APP_DEPLOYER_PRINCIPAL_IDS || '[]' }}
+    steps:
+      - name: Check repository variables
+        env:
+          AZURE_APPLY_CLIENT_ID: ${{ vars.AZURE_APPLY_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          guid='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          json_list='^\[.*\]$'
+          problems=()
+          for v in AZURE_APPLY_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID; do
+            [[ "${!v}" =~ $guid ]] || problems+=("$v must be a lowercase GUID")
+          done
+          [[ "$APP_DEPLOYER_PRINCIPAL_IDS" =~ $json_list ]] || problems+=("LAB_APP_DEPLOYER_PRINCIPAL_IDS must be a JSON list, e.g. []")
+          if ((${#problems[@]} > 0)); then
+            printf '::error::Repository variable problem: %s\n' "${problems[@]}"
+            echo "::error::Settings > Secrets and variables > Actions > Variables; names and values in docs/RUNBOOK.md (section 'Variáveis do GitHub')."
+            exit 1
+          fi
+          # Identifiers never reach the logs of a public repository.
+          for v in AZURE_APPLY_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID; do
+            echo "::add-mask::${!v}"
+          done
+          echo "::add-mask::$(printf '%s' "$AZURE_SUBSCRIPTION_ID" | sha1sum | cut -c1-8)"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install kubectl, helm and kubelogin (pinned, SHA256-verified)
+        run: bash scripts/install-tools.sh kubectl helm kubelogin
+
+      # Right before the script: the GitHub OIDC assertion behind azure/login lives 5-10 minutes,
+      # and the script acquires every Azure token it needs in its first minutes.
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_APPLY_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Run platform/${{ inputs.action }}.sh
+        env:
+          ACTION: ${{ inputs.action }}
+        run: |
+          case "$ACTION" in
+            install) bash platform/install.sh ;;
+            uninstall) bash platform/uninstall.sh ;;
+            *) echo "::error::unknown action: $ACTION"; exit 1 ;;
+          esac

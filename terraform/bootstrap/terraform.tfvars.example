@@ -1,0 +1,11 @@
+# Copy to terraform.tfvars (git-ignored). Placeholder values only.
+
+# Required: the dedicated subscription (az account show --query id -o tsv).
+subscription_id = "00000000-0000-0000-0000-000000000000"
+
+location     = "eastus2"
+github_owner = "maringelix"
+
+# Required: who receives the cost alerts (Actual 50/80/100 %, Forecasted 100 %).
+budget_alert_emails   = ["you@example.com"]
+monthly_budget_amount = 25

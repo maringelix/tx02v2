@@ -1,0 +1,98 @@
+# Applies terraform/envs/lab. CLOUD-MUTATING and billable (Application Gateway for Containers with
+# its WAF is the biggest item, docs/CUSTOS.md): dispatch manually, after reading the latest
+# terraform-plan run. The `lab` environment (required reviewer, main only) gates the federated
+# credential of tx02v2-gha-apply (subject repo:<owner>/tx02v2:environment:lab). Terraform logs in
+# with OIDC through the ARM_* variables. Not run in the cloud yet (v2).
+name: terraform-apply
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tx02v2-lab-cloud
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    environment: lab
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_APPLY_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      TF_STATE_STORAGE_ACCOUNT: ${{ vars.TF_STATE_STORAGE_ACCOUNT }}
+      TF_IN_AUTOMATION: "1"
+      TF_INPUT: "0"
+      TF_VAR_location: ${{ vars.LAB_LOCATION }}
+      TF_VAR_github_owner: ${{ github.repository_owner }}
+      TF_VAR_deploy_principal_id: ${{ vars.LAB_DEPLOY_PRINCIPAL_ID }}
+      TF_VAR_cluster_admin_principal_ids: ${{ vars.LAB_CLUSTER_ADMIN_PRINCIPAL_IDS }}
+      TF_VAR_app_deployer_principal_ids: ${{ vars.LAB_APP_DEPLOYER_PRINCIPAL_IDS || '[]' }}
+      TF_VAR_api_server_authorized_ip_ranges: ${{ vars.LAB_API_SERVER_AUTHORIZED_IP_RANGES }}
+      TF_VAR_allow_api_server_from_anywhere: ${{ vars.LAB_ALLOW_API_SERVER_FROM_ANYWHERE || 'false' }}
+      TF_VAR_enable_waf: ${{ vars.LAB_ENABLE_WAF || 'true' }}
+    steps:
+      - name: Check repository variables
+        run: |
+          guid='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          json_list='^\[.*\]$'
+          problems=()
+          # <environment variable>:<repository variable it comes from>
+          for pair in ARM_CLIENT_ID:AZURE_APPLY_CLIENT_ID ARM_TENANT_ID:AZURE_TENANT_ID ARM_SUBSCRIPTION_ID:AZURE_SUBSCRIPTION_ID TF_VAR_deploy_principal_id:LAB_DEPLOY_PRINCIPAL_ID; do
+            v="${pair%%:*}"
+            [[ "${!v}" =~ $guid ]] || problems+=("${pair#*:} must be a lowercase GUID")
+          done
+          [[ "$TF_STATE_STORAGE_ACCOUNT" =~ ^tx02v2tfstate[0-9a-f]{8}$ ]] || problems+=("TF_STATE_STORAGE_ACCOUNT must be the bootstrap output state_storage_account_name")
+          [[ "$TF_VAR_location" =~ ^[a-z][a-z0-9]{2,30}$ ]] || problems+=("LAB_LOCATION must be the location given to the bootstrap, e.g. eastus2")
+          for pair in TF_VAR_cluster_admin_principal_ids:LAB_CLUSTER_ADMIN_PRINCIPAL_IDS TF_VAR_api_server_authorized_ip_ranges:LAB_API_SERVER_AUTHORIZED_IP_RANGES TF_VAR_app_deployer_principal_ids:LAB_APP_DEPLOYER_PRINCIPAL_IDS; do
+            v="${pair%%:*}"
+            [[ "${!v}" =~ $json_list ]] || problems+=("${pair#*:} must be a JSON list, e.g. [\"...\"]")
+          done
+          if ((${#problems[@]} > 0)); then
+            printf '::error::Repository variable problem: %s\n' "${problems[@]}"
+            echo "::error::Settings > Secrets and variables > Actions > Variables; names and values in docs/RUNBOOK.md (section 'Variáveis do GitHub')."
+            exit 1
+          fi
+          # Identifiers never reach the logs of a public repository.
+          for v in ARM_CLIENT_ID ARM_TENANT_ID ARM_SUBSCRIPTION_ID TF_VAR_deploy_principal_id; do
+            echo "::add-mask::${!v}"
+          done
+          echo "::add-mask::$(printf '%s' "$ARM_SUBSCRIPTION_ID" | sha1sum | cut -c1-8)"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install terraform (pinned, SHA256-verified)
+        run: |
+          bash scripts/install-tools.sh terraform
+          echo "$GITHUB_WORKSPACE/.tools/bin" >> "$GITHUB_PATH"
+
+      - name: terraform init
+        run: terraform -chdir=terraform/envs/lab init -input=false -lockfile=readonly -backend-config="storage_account_name=$TF_STATE_STORAGE_ACCOUNT"
+
+      - name: terraform plan
+        run: terraform -chdir=terraform/envs/lab plan -input=false -no-color -out=tfplan
+
+      - name: terraform apply
+        run: terraform -chdir=terraform/envs/lab apply -input=false -no-color tfplan
+
+      - name: Outputs to the job summary (identifiers replaced)
+        run: |
+          suffix="$(printf '%s' "$ARM_SUBSCRIPTION_ID" | sha1sum | cut -c1-8)"
+          {
+            echo "## terraform apply: terraform/envs/lab"
+            echo '```'
+            terraform -chdir=terraform/envs/lab output -no-color |
+              sed -E -e 's/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<GUID>/g' -e "s/$suffix/<SUFFIX>/g"
+            echo '```'
+            echo "Next: dispatch the platform workflow (action=install), then the deploy-azure workflow of dx02v2. Destroy when done."
+          } >> "$GITHUB_STEP_SUMMARY"

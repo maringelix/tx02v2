@@ -1,0 +1,32 @@
+# Copy to terraform.tfvars (git-ignored) for local runs. CI uses TF_VAR_* repository variables
+# instead (docs/RUNBOOK.md). Placeholder values only: 203.0.113.10/32 is a documentation address
+# (RFC 5737) and the GUIDs are obviously fake.
+
+location = "eastus2"
+
+# Your public IP as /32. GitHub-hosted runners need 0.0.0.0/0 plus
+# allow_api_server_from_anywhere = true for the platform/deploy workflows (docs/ARQUITETURA.md).
+api_server_authorized_ip_ranges = ["203.0.113.10/32"]
+allow_api_server_from_anywhere  = false
+
+# Bootstrap output deploy_principal_id (object ID of dx02v2-gha-deploy).
+deploy_principal_id = "00000000-0000-0000-0000-000000000000"
+
+# Object IDs with Azure Kubernetes Service RBAC Cluster Admin: the principal ID of tx02v2-gha-apply
+# (bootstrap output apply_principal_id; runs the platform and destroy workflows) and your own
+# (az ad signed-in-user show --query id -o tsv).
+cluster_admin_principal_ids = [
+  "11111111-1111-1111-1111-111111111111",
+  "22222222-2222-2222-2222-222222222222",
+]
+
+# Extra deployers (optional): object IDs bound to the Role dx02v2-deployer that also get the Azure
+# roles of dx02v2-gha-deploy (AcrPush, AKS Cluster User Role, App Configuration Data Reader).
+app_deployer_principal_ids = []
+
+# Lab-friendly defaults (change only if you know the cost impact, see docs/CUSTOS.md):
+# enable_waf                = true
+# node_vm_size              = "Standard_D2als_v6"
+# node_count                = 2
+# kubernetes_version        = "1.36"
+# enable_control_plane_logs = false

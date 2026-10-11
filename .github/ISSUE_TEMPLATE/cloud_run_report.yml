@@ -1,0 +1,82 @@
+name: Cloud run report
+description: I ran this lab in my own Azure subscription. Share what happened so the status matrix stays honest.
+title: "cloud run: <date> <location>"
+labels:
+  - cloud-run
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Follow docs/RUNBOOK.md. Redact subscription, tenant, object and client IDs, resource IDs, the
+        name suffix, IPs and e-mails (use `00000000-0000-0000-0000-000000000000`, `<SUFFIX>`).
+        A report counts as evidence only with the commit SHAs and the leftover check result.
+  - type: input
+    id: date
+    attributes:
+      label: Date (UTC)
+      placeholder: "2026-10-11"
+    validations:
+      required: true
+  - type: input
+    id: location
+    attributes:
+      label: Azure location
+      placeholder: eastus2
+    validations:
+      required: true
+  - type: dropdown
+    id: offer
+    attributes:
+      label: Subscription offer
+      options:
+        - Free Trial
+        - Pay-As-You-Go
+        - Other (explain below)
+    validations:
+      required: true
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions and commit
+      description: tx02v2 and dx02v2 commit SHAs, Terraform version, Kubernetes version, enable_waf, chart versions if changed.
+    validations:
+      required: true
+  - type: checkboxes
+    id: steps
+    attributes:
+      label: Steps executed
+      options:
+        - label: bootstrap (local apply)
+        - label: terraform-apply workflow (or local apply of terraform/envs/lab)
+        - label: platform workflow (install)
+        - label: dx02v2 deploy-azure workflow
+        - label: smoke test of the app through Application Gateway for Containers
+        - label: terraform-destroy workflow (or local destroy)
+        - label: scripts/leftovers.sh (in the workflow and locally as the subscription Owner)
+        - label: bootstrap teardown
+  - type: input
+    id: duration
+    attributes:
+      label: Total duration (apply to destroy)
+      placeholder: 2h15m
+    validations:
+      required: true
+  - type: input
+    id: cost
+    attributes:
+      label: Observed cost (Cost Management, billing currency)
+      placeholder: "3.10 USD"
+    validations:
+      required: true
+  - type: textarea
+    id: problems
+    attributes:
+      label: Problems and workarounds
+      description: Errors, retries, quota or offer restrictions, manual fixes (redacted logs welcome).
+  - type: textarea
+    id: leftovers
+    attributes:
+      label: Leftovers after destroy
+      description: Output of `scripts/leftovers.sh` (redacted), soft-deleted Key Vaults, and anything you had to delete by hand.
+    validations:
+      required: true

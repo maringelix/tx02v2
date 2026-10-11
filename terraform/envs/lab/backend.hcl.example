@@ -1,0 +1,4 @@
+# Copy to backend.hcl (git-ignored) and use: terraform init -backend-config=backend.hcl
+# The bootstrap output backend_hcl prints this file with your real values.
+# container_name, key and use_azuread_auth are fixed in versions.tf.
+storage_account_name = "tx02v2tfstate00000000"

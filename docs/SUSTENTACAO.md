@@ -11,8 +11,8 @@ cobre o app (ver `dx02v2`), mas lista o que precisa mudar junto com ele.
 
 ## 2. Estado atual
 
-- Harness completo (`HARNESS_STRICT=1 make verify`, 32 checks) `verificado localmente` em container
-  Linux; o CI ainda não rodou no GitHub.
+- Harness completo (`HARNESS_STRICT=1 make verify`, 32 checks) `verificado no CI` (jobs `static` e
+  `test` verdes no GitHub) e também em container Linux local.
 - Bootstrap, apply, plan em PRs, plataforma e destroy: `não executado em nuvem (v2)`.
 - Contrato com o dx02v2: versão 1 (`docs/CONTRATO.md`).
 

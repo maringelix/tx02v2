@@ -44,3 +44,8 @@ All notable changes to this project are documented here. The format follows
     2026-10-11), guardrails, harness, sustainment, publication checklist, and
     `docs/LICOES_APRENDIDAS.md` (sanitized lessons learned from the Azure v1 lab, December 2025 –
     January 2026).
+
+### Changed (after the first push)
+
+- The CI (`static`, `test`) ran green on GitHub: the README status matrix now says `verified in CI`
+  for those rows; AGENTS.md and docs/SUSTENTACAO.md follow.

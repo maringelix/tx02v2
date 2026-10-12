@@ -6,7 +6,7 @@ is the source of truth. The full rule list (pt-BR) is [docs/GUARDRAILS.md](docs/
 ## 1. Mission and context
 
 - `tx02v2` is the Azure infrastructure half of a public, educational DevOps lab (v2 family:
-  `tx01v2` + `dx01v2` on AWS, `tx02v2` + `dx02v2` on Azure; `tx03v2`/`dx03v2` on GCP are planned).
+  `tx01v2` + `dx01v2` on AWS, `tx02v2` + `dx02v2` on Azure, `tx03v2` + `dx03v2` on Google Cloud).
 - It must stay healthy without any cloud account: every claim is backed by the local harness or
   carries a status label (`verified in CI`, `verified locally`, `not run in the cloud (v2)`, `planned`).
 - Current status: the harness (`HARNESS_STRICT=1 make verify`, 32 checks) passes locally in a Linux

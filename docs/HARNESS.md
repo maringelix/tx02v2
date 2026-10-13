@@ -3,9 +3,9 @@
 O harness é o conjunto de checks que prova o que este repositório afirma, sem conta na nuvem.
 Ele vive em `scripts/harness.sh`; o `Makefile` e o CI só o chamam, e o CI usa `HARNESS_STRICT=1`.
 Duas diferenças conhecidas entre uma pasta sem commits e o CI: o `gitleaks` lê a árvore de trabalho
-(no CI, o histórico inteiro) e o bit executável só é exigido de scripts que já estão no índice do git. `scripts/harness.sh list` mostra os checks: 30 no estágio `static`
-e os 2 `terraform-test:*` no `test`, que também roda `tool-versions` (32 no `make verify`, que conta
-o `tool-versions` uma vez).
+(no CI, o histórico inteiro) e o bit executável só é exigido de scripts que já estão no índice do git. `scripts/harness.sh list` mostra os checks: 35 no estágio `static`
+e os 3 `terraform-test:*` no `test`, que também roda `tool-versions` (38 no `make verify`, que conta
+o `tool-versions` uma vez), mais o `local-lab-e2e` no estágio `e2e` (`make e2e`, fora do `verify`).
 
 ## Camadas
 
@@ -19,7 +19,7 @@ o `tool-versions` uma vez).
 | Workflows | `policy-workflows`, `actionlint` | actions por SHA, `permissions`, regras de OIDC, guardas, `-lock=false` só no plan, confirmação digitada e checagem de sobras no destroy; YAML, expressões e shellcheck dos blocos `run` | comportamento contra a Azure | local, CI |
 | Exceções | `trivyignore-policy` | cada ignore tem `statement` e `expired_at` em até ~7 meses | — | local, CI |
 | Contrato | `contract-platform`, `contract-appconfig` | os manifests renderizados são os do contrato (objetos, labels, regras da Role, sujeitos da RoleBinding, ClusterSecretStore); o renderizador recusa entradas inválidas; values e pins da plataforma; as 15 chaves de `contract.tf` = lista do harness, e cada uma tem uma linha na tabela de `docs/CONTRATO.md` | linhas a mais na tabela; o que o dx02v2 faz (o harness dele confere) | local, CI |
-| Formato e sintaxe | `terraform-fmt`, `terraform-validate:*` (2 roots, 8 módulos) | HCL formatado e válido para o schema do provider fixado | que a Azure aceita os valores | local, CI |
+| Formato e sintaxe | `terraform-fmt`, `terraform-validate:*` (3 roots, 8 módulos) | HCL formatado e válido para o schema do provider fixado | que a Azure aceita os valores | local, CI |
 | Lock de providers | `terraform-lockfiles` | pelo menos 4 hashes `h1:` por provider nos lock files dos roots (gerados para linux_amd64, linux_arm64, darwin_arm64, windows_amd64) | a qual plataforma cada hash pertence | local, CI |
 | Lint | `tflint` | preset recommended + ruleset azurerm 0.32.0 sem issues | regras que dependem de chamadas à Azure | local, CI |
 | Segurança da IaC | `trivy-config`, `trivy-config-tfvars` | sem HIGH/CRITICAL fora das exceções documentadas | configuração em runtime, RBAC efetivo | local, CI |
@@ -28,6 +28,9 @@ o `tool-versions` uma vez).
 | Charts da plataforma | `helm-template` | o chart do ALB Controller 1.12.2 tem o SHA256 registrado; os charts do ALB Controller e do ESO 2.12.0 aceitam `platform/values` e renderizam imagens, ServiceAccounts, anotações e labels do Workload ID e flags | instalação real e comportamento dos controllers | local, CI (rede) |
 | Segredos | `gitleaks` | nenhum segredo conhecido (histórico completo quando há commits; antes disso, a árvore de trabalho) | segredos fora dos padrões do gitleaks | local, CI |
 | Testes unitários | `terraform-test:bootstrap` (16 casos), `terraform-test:envs/lab` (55 casos) | sujeitos OIDC, state, papéis do plan e do apply, lista ABAC = papéis do lab, papéis dos deployers, budget, AKS, nós, PostgreSQL sem senha no state, Key Vault, ACR, AGC/WAF, chaves do contrato, validações negativas | que os recursos sobem na Azure (provider mockado) | local, CI |
+| Lab local: Terraform | `terraform-validate:envs/local`, `terraform-test:envs/local` (10 casos, só plan) | rede privada, labels em tudo, só o registry publicado e só em 127.0.0.1, banco só TLS, imagens por digest, validações negativas | que o Docker cria os contêineres (isso é o `e2e`) | local, CI |
+| Lab local: plataforma | `local-versions`, `helm-template-local`, `kubeconform-local`, `policy-gator` | os 15 charts fixados por SHA256 renderizam só imagens por digest e Services ClusterIP; manifests válidos; cada política do Gatekeeper aceita e recusa os casos de `platform/local/policies/tests`; kind no mesmo minor do AKS do lab; gator igual ao Gatekeeper | comportamento no cluster | local, CI (rede) |
+| Lab local: ponta a ponta | `local-lab-e2e` (`make e2e`) | apply do `terraform/envs/local`, instalação do perfil `full` e as 26 sondas de `platform/local/check.sh` (`docs/LAB_LOCAL.md`); destroy e checagem de sobras sempre | Azure | local (Docker, 8 GB), CI; `verificado no CI` e localmente em 2026-10-13 (26 sondas) |
 | Nuvem | workflows `terraform-*`, `platform` | — | — | `não executado em nuvem (v2)` |
 
 ## Jobs do CI
@@ -36,10 +39,12 @@ o `tool-versions` uma vez).
 |---|---|---|
 | `static` | `make tools && make static` | `static` |
 | `test` | `make tools && make test` | `test` |
+| `e2e` | `make tools && make e2e` | `e2e` (o lab local; diagnósticos como artifact em caso de falha) |
 
 Os ids `static` e `test` são estáveis: são os checks exigidos pelo ruleset
-(`.github/rulesets/main.json`); o `policy-workflows` falha se um deles sumir. O CI não recebe
-credenciais da Azure.
+(`.github/rulesets/main.json`); o `policy-workflows` falha se um deles sumir. O `e2e` roda em todo PR
+e precisa estar verde para o merge (disciplina do mantenedor; ainda não está no ruleset). O CI não
+recebe credenciais da Azure.
 
 ## Modo estrito
 

@@ -56,6 +56,12 @@ humana/agente). Os testes citados ficam em `terraform/*/tests/` e rodam com `mak
 | CI-06 | Plans com `-lock=false` (a identidade do plan só lê o state); apply e destroy mantêm o lock | o plan não consegue gravar o lease | `policy-workflows` | bloqueante |
 | CI-07 | O resumo e o artefato do plan e o resumo do apply trocam GUIDs e o sufixo por `<GUID>`/`<SUFFIX>`; os workflows mascaram os IDs de tenant, assinatura, client e do deploy e o sufixo | logs de repositório público | `terraform-plan.yml`, `terraform-apply.yml` | processo |
 | CI-08 | CI semanal agendado (segunda 06:00 UTC) | detecta ignores vencidos, charts e URLs que mudaram | `ci.yml` | alerta |
+| CI-09 | O job `e2e` (lab local) roda em todo PR e precisa estar verde antes do merge | a plataforma local é provada, não só renderizada | `ci.yml`; revisão (ainda fora do ruleset) | processo |
+| LOC-01 | O lab local nunca fala com uma nuvem: sem provider de nuvem nem backend remoto em `terraform/envs/local`; Docker só por socket local; `random_password` só nesse root (credenciais descartáveis desta máquina) | o lab é grátis e seguro de rodar | `policy-terraform`; validação de `docker_host` (`terraform-test:envs/local`) | bloqueante |
+| LOC-02 | Contêineres do lab local com o label `tx02v2.lab=local`; só o registry publica porta, e em 127.0.0.1 (`5002`); nada privilegiado | nada fica exposto nem esquecido | `terraform-test:envs/local`, `policy-terraform`, `scripts/leftovers-local.sh` | bloqueante |
+| LOC-03 | Charts do lab local fixados por versão e SHA256 do `.tgz`; imagens por digest; Services só ClusterIP (exceto os Gateways, criados em runtime) | supply chain e nenhuma UI exposta (erro do v1: Grafana e Argo CD públicos) | `helm-template-local`, `local-versions`, `platform/local/install.sh` (recusa SHA256 diferente) | bloqueante |
+| LOC-04 | Políticas do Gatekeeper em `deny`, webhook `Fail` para o app, cada política com casos aceitos e recusados | no v1 as políticas ficavam em `dryrun` sem audit | `policy-gator`; sonda `policies` do `e2e` | bloqueante |
+| LOC-05 | Toda peça da plataforma local tem uma sonda com tráfego ou chamada real; o `e2e` sempre destrói e confere sobras | só se afirma o que foi provado | `platform/local/check.sh`, `scripts/local-lab.sh e2e` | bloqueante (no job `e2e`) |
 | MUD-01 | `main` protegido por ruleset: PR obrigatório, checks `static` e `test` estritos, sem force-push | toda mudança passa pelo harness | `.github/rulesets/main.json` + `scripts/repo-guardrails.sh`; `policy-workflows` confere os contextos | bloqueante (depois de publicado) |
 | MUD-02 | Ignore de scanner só com `statement` e `expired_at` em até ~7 meses | exceções revisadas | `trivyignore-policy` | bloqueante |
 | MUD-03 | Scripts de entrada com bit executável no índice do git | commits do Windows perdem o bit | `repo-structure` (antes do primeiro commit, só um aviso com o comando `git add --chmod=+x`) | bloqueante (depois do primeiro commit) |
@@ -113,6 +119,12 @@ privado (`AZU-0065`; ADR 19) e add-on Azure Policy (`AZU-0066`; IAC-09).
 - O schema do ClusterSecretStore no kubeconform é de 2026-06-02 (`docs/HARNESS.md`).
 - O tier Free da App Configuration aceita 1.000 requisições por dia; depois responde 429 até a
   meia-noite UTC.
+- O lab local prova a plataforma num nó kind, não na Azure; o cloud-provider-kind usa o socket do
+  Docker (cria contêineres): rode o lab local só numa máquina descartável ou no CI (`docs/LAB_LOCAL.md`).
+  A rodada `e2e` ainda não foi executada neste repositório.
+- Os namespaces `istio-system`, `monitoring-agents` e `chaos-mesh` do lab local são `privileged` por
+  necessidade dos componentes; o webhook do Gatekeeper não avalia os namespaces da plataforma (para que
+  ela suba mesmo com o Gatekeeper fora do ar).
 
 ## Como verificar
 

@@ -11,8 +11,11 @@ cobre o app (ver `dx02v2`), mas lista o que precisa mudar junto com ele.
 
 ## 2. Estado atual
 
-- Harness completo (`HARNESS_STRICT=1 make verify`, 32 checks) `verificado no CI` (jobs `static` e
-  `test` verdes no GitHub) e também em container Linux local.
+- Harness completo (`HARNESS_STRICT=1 make verify`) `verificado no CI` com 32 checks (jobs `static`
+  e `test` verdes no GitHub); com os checks do lab local são 38, `verificado localmente` em container
+  Linux (o CI ainda não rodou essa versão).
+- Lab local (`docs/LAB_LOCAL.md`): `make e2e` com o perfil `full` (26 sondas) `verificado no CI`
+  (job `e2e`) e `verificado localmente` em 2026-10-13 (rodada do zero, destroy sem sobras).
 - Bootstrap, apply, plan em PRs, plataforma e destroy: `não executado em nuvem (v2)`.
 - Contrato com o dx02v2: versão 1 (`docs/CONTRATO.md`).
 
@@ -48,10 +51,14 @@ cobre o app (ver `dx02v2`), mas lista o que precisa mudar junto com ele.
 | Runners e devcontainer | Ubuntu 24.04 LTS | suporte padrão até 2029-04 | ubuntu.com | Trocar antes do fim |
 | Schema do ClusterSecretStore (kubeconform) | datreeio/CRDs-catalog `f3e4382` (2026-06-02) | — | `docs/HARNESS.md` | Reavaliar a cada revisão trimestral (5.7) |
 | Exceções do trivy | 2 entradas (`AZU-0012`, `AZU-0013`) | 2027-04-30 | `.trivyignore.yaml` | Revisar até abril de 2027 (5.9) |
+| Istio (lab local) | 1.31.1 | ~2027-02 (6 semanas depois da 1.33) | [releases suportadas](https://istio.io/latest/docs/releases/supported-releases/) | Trimestral (5.12), junto com o tx01v2 |
+| Demais charts do lab local | `platform/local/versions.env` (cert-manager 1.21.2, kube-prometheus-stack 92.3.0, Loki 7.3.0, Alloy 1.13.1, Argo CD 10.10.3, Gatekeeper 3.23.1, Trivy Operator 0.37.0, Velero 12.2.1, Chaos Mesh 2.8.4, metrics-server 3.14.0) | cada projeto mantém as versões recentes | releases de cada projeto | Trimestral (5.12), junto com o tx01v2 |
+| Imagens dos serviços emulados | registry 3.1.2, Versity S3 Gateway 1.8.0, Soft Serve 0.12.3, cloud-provider-kind 0.12.0, PostgreSQL 17 | sem data fixa | `terraform/envs/local/images.tf` | Trimestral (5.12) |
+| kind / gator | 0.33.0 (nó `kindest/node:v1.36.4`) / 3.23.1 | sem política publicada | releases do kind e do Gatekeeper | Trimestral (5.12); o nó segue o minor do AKS do lab |
 
 ## 5. Procedimentos
 
-### 5.1 Ferramenta do harness (terraform, tflint, ruleset azurerm, trivy, actionlint, shellcheck, kubeconform, gitleaks, kubectl, helm, kubelogin)
+### 5.1 Ferramenta do harness (terraform, tflint, ruleset azurerm, trivy, actionlint, shellcheck, kubeconform, gitleaks, kubectl, helm, kubelogin, kind, gator)
 
 ```bash
 scripts/update-tool-checksums.sh trivy 0.76.0   # baixa o arquivo de checksums oficial da release
@@ -102,6 +109,8 @@ AKS, Kubernetes mínimo do ALB Controller e compatibilidade do ESO. Depois:
    versão (o `version-consistency` compara a minor padrão com a dos schemas).
 3. `kubectl` a no máximo uma minor de distância (5.1).
 4. No dx02v2: a mesma minor nos schemas, no kind e no kubectl dele (`docs/SUSTENTACAO.md` de lá).
+5. Lab local: a imagem do nó em `terraform/envs/local/kind-config.yaml` (o `local-versions` exige o
+   mesmo minor; 5.12).
 
 ### 5.5 ALB Controller (junto com o dx02v2)
 
@@ -169,6 +178,21 @@ ajuste `plan_roles` em `terraform/bootstrap/roles.tf` com o papel de menor privi
 Na revisão trimestral, refaça as consultas da Azure Retail Prices API
 (`https://prices.azure.com/api/retail/prices?$filter=...`) para cada linha do `docs/CUSTOS.md`,
 atualize a data e os totais do README e confira o medidor `FreeTierInfrastructureCost` do AKS.
+
+### 5.12 Lab local (charts, imagens, kind)
+
+Os pins são os mesmos do lab local do `tx01v2`: atualize os dois repositórios juntos.
+
+1. Para cada chart de `platform/local/versions.env`: leia as notas da release, rode
+   `helm pull <chart> --repo <repo> --version <nova>` e grave a versão e o `sha256sum` do `.tgz`.
+2. Atualize os digests em `platform/local/values/*.yaml` (`docker buildx imagetools inspect <imagem>:<tag>`
+   devolve o digest do índice multi-arquitetura). O check `helm-template-local` recusa imagem sem digest.
+3. Gatekeeper: suba `GATOR_VERSION` (`scripts/update-tool-checksums.sh gator <versão>`) junto com
+   `GATEKEEPER_VERSION`; o check `local-versions` exige as duas iguais.
+4. Imagens dos serviços emulados: `terraform/envs/local/images.tf` (o teste exige digest em todas). O
+   nó do kind (`terraform/envs/local/kind-config.yaml`) segue o `kubernetes_version` do lab
+   (`local-versions` confere o minor).
+5. Rode `make verify` e `make e2e` (ou deixe o job `e2e` do CI provar no PR) e registre no CHANGELOG.
 
 ## 6. Resposta a problemas
 

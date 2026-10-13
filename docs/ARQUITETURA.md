@@ -49,6 +49,37 @@ Camadas: `terraform/bootstrap` (uma vez, por um humano Owner da assinatura) → 
 `platform/` (Helm e manifests, nunca pelo Terraform) → app do `dx02v2`. O contrato entre as camadas
 está em `docs/CONTRATO.md`.
 
+## Lab local
+
+A mesma arquitetura emulada no Docker (`terraform/envs/local` + `platform/local`), com a plataforma
+completa do v1 por cima; é o lab local do `tx01v2` com os nomes do `tx02v2` e os gêmeos Azure.
+Detalhes, sondas e limites: `docs/LAB_LOCAL.md` (rodada de ponta a ponta `planejado` aqui).
+
+```mermaid
+flowchart LR
+  dev["sua máquina / runner do CI"] -->|terraform apply| net
+  subgraph net["rede Docker tx02v2-local 10.251.0.0/24"]
+    reg["registry (ACR)"]
+    db[("PostgreSQL 17, só TLS (PostgreSQL Flexible Server)")]
+    s3["Versity S3 Gateway, API S3 (Blob Storage)"]
+    git["Soft Serve (origem do GitOps)"]
+    lb["cloud-provider-kind (AGC)"]
+    subgraph kind["kind tx02v2-local 1.36 (AKS)"]
+      gw["Gateway istio + cert-manager lab-ca"]
+      mesh["Istio ambient: ztunnel, mTLS STRICT"]
+      obs["Prometheus, Alertmanager, Grafana, Loki, Alloy"]
+      ops["Argo CD, Gatekeeper, Trivy Operator, Velero, Chaos Mesh"]
+      eso["ESO local-secrets (Key Vault)"]
+      app["namespace dx02v2"]
+    end
+  end
+  lb --> gw --> app
+  app -->|TLS verify-full| db
+  ops -->|backups| s3
+  ops -->|sync| git
+  kind -->|pull| reg
+```
+
 ## Decisões (ADRs curtos)
 
 | # | Decisão | Motivo | Alternativa descartada |
@@ -83,6 +114,13 @@ está em `docs/CONTRATO.md`.
 | 28 | Sem flow logs | os NSG flow logs estão sendo aposentados pela Azure; VNet flow logs exigem Network Watcher no `NetworkWatcherRG` (fora do escopo do apply) e uma conta de storage | VNet flow logs |
 | 29 | Logs do plano de controle opcionais (`enable_control_plane_logs`): `kube-audit-admin` e `guard` num workspace PerGB2018 com teto de 0,5 GB/dia e 30 dias | ingestão cobrada por GB; desligado por padrão | sempre ligado |
 | 30 | Sufixo determinístico `substr(sha1(subscription_id), 0, 8)` nos nomes globais | nomes previsíveis para o dx02v2 e o `platform/install.sh` (endpoint da App Configuration derivável); nada aleatório no state | sufixo aleatório |
+| 31 | Lab local com Terraform + provider Docker e kind por CLI (`terraform_data` + `local-exec`) | o mesmo fluxo apply/destroy da nuvem, sem conta; o provider `tehcyx/kind` embute uma versão antiga do kind; o state local guarda credenciais descartáveis desta máquina (`random_password` só em `terraform/envs/local`) | emuladores da Azure (o Azurite emula só o storage; AKS, AGC e Key Vault não têm emulador local oficial); minikube |
+| 32 | Istio ambient no lab local | mTLS e autorização por identidade sem sidecar; roda no kind | sidecar (mais memória por pod); Linkerd |
+| 33 | GitOps com Argo CD lendo um servidor git do lab | um único dono do namespace do app; o push usa a chave do state, a leitura é anônima; o Argo CD fica só ClusterIP (no v1 ele e o Grafana estavam em LoadBalancers públicos) | Flux; apontar para o GitHub (exigiria credenciais e internet no caminho do deploy) |
+| 34 | Gatekeeper com políticas próprias testadas no `gator` | as regras do v1, em `deny`, com casos que provam aceitação e recusa; sem o add-on Azure Policy, que no v1 brigava com o Gatekeeper | gatekeeper-library inteira (mais regras do que o lab explica); Kyverno |
+| 35 | Alertmanager → `alert-sink` dentro do cluster | entrega de alerta provada sem credencial externa | Slack/e-mail reais |
+| 36 | Velero no emulador de objetos (API S3), backup por recursos, sem snapshots | o ensaio de restore roda em minutos e sem nuvem; o emulador fala S3, então o plugin AWS do Velero só existe no lab local (na Azure seria o plugin Azure no Blob Storage, `planejado`) | `pg_dump` sozinho; snapshots CSI; Azurite com o plugin Azure (não avaliado; o lab reaproveita o emulador do `tx01v2`) |
+| 37 | Perfis `core`/`observability`/`operations`/`full`; rede `10.251.0.0/24` e registry em `localhost:5002` | máquinas com pouca memória validam uma camada por vez; o CI roda `full`; rede e porta diferentes das do `tx01v2` (`10.250.0.0/24`, `5001`) evitam colisão entre os labs | um único perfil; os mesmos endereços em todos os pares |
 
 ### Desvio documentado: papéis do ALB Controller
 

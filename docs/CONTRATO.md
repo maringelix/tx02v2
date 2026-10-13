@@ -189,6 +189,40 @@ resolvidas no texto acima, sem mudar a versão (nenhum valor mudou):
    é exatamente /24 (validação de `agc_subnet_cidr`); os `app_deployer_principal_ids` recebem os
    papéis Azure de `dx02v2-gha-deploy` (teste `app_deployers_get_the_roles_of_the_deploy_identity`).
 
+## Lab local (contrato local, versão 1)
+
+O lab local (`docs/LAB_LOCAL.md`) é um contrato à parte, com versão própria (chave `version`), lido
+pelo deploy local do dx02v2. Ele espelha o contrato da nuvem com nomes do lab local; não muda nada
+acima. As chaves são as mesmas do lab local do `tx01v2` (o app consome os dois do mesmo jeito).
+Publicado por `platform/local/install.sh` no ConfigMap `lab-system/lab-contract`:
+
+| Chave | Valor | Equivale na nuvem |
+|---|---|---|
+| `version` | `1` | versão deste arquivo |
+| `cluster-name` | `tx02v2-local` | `cluster-name` |
+| `network-cidr` | `10.251.0.0/24` (ou `subnet_cidr`) | `vnet-cidr` |
+| `registry` | `registry.tx02v2.local` (nome das imagens no cluster) | `acr/login-server` (prefixo) |
+| `registry-push` | `localhost:5002` (push desta máquina) | — |
+| `db.endpoint-ip`, `db.hostname`, `db.port` | `10.251.0.11`, `db.tx02v2.local`, `5432` | FQDN do PostgreSQL Flexible Server (`host` de `tx02v2-lab-db-app`) |
+| `db.secret-name` | `tx02v2-lab-db-app` (chaves `host`, `port`, `dbname`, `username`, `password`) | `db/secret-name` |
+| `db.ca-configmap` | `lab-system/lab-ca` (chave `ca.crt`) | bundle `azure-pg-ca` (três raízes, criado pelo deploy) |
+| `app.admin-token-secret-name` | `tx02v2-lab-app-admin-token` (chave `token`; no Key Vault é uma string pura) | `app/admin-token-secret-name` |
+| `eso.cluster-secret-store` | `local-secrets` (só o namespace `dx02v2`) | `eso/cluster-secret-store` |
+| `gateway.class` | `istio` (Gateway API) | GatewayClass `azure-alb-external` (com `agc/id` e `agc/frontend-name`) |
+| `tls.cluster-issuer` | `lab-ca` (cert-manager) | — (HTTPS no listener do AGC `planejado`) |
+| `gitops.push-url`, `gitops.read-url` | `ssh://10.251.0.13:23231/dx02v2-gitops`, `http://10.251.0.13:23232/dx02v2-gitops.git` | — |
+| `gitops.push-key-secret` | `lab-secrets/gitops-push-key` (chave SSH do push, `kubernetes.io/ssh-auth`) | identidade `dx02v2-gha-deploy` |
+| `argocd.project` | `dx02v2` (AppProject: só o repositório GitOps, só o namespace `dx02v2`, só os kinds do deploy, nada de Secret ou recurso de cluster) | Role `dx02v2-deployer` |
+| `monitoring.prometheus-service-account` | `monitoring/kube-prometheus-stack-prometheus` (identidade do Prometheus no mesh) | — |
+
+Os Secrets `tx02v2-lab-db-app` e `tx02v2-lab-app-admin-token` ficam no namespace `lab-secrets` (o
+gêmeo local do Key Vault) com os mesmos nomes dos segredos do Key Vault, que já são válidos no
+Kubernetes. Regras do namespace `dx02v2` no lab local: Pod Security `restricted`, mesh ambient
+(`istio.io/dataplane-mode: ambient`), constraints do Gatekeeper em `deny` (`policy.lab/enforce:
+"true"`; imagens só de `registry.tx02v2.local/`), métricas do app coletadas pelo Prometheus do
+namespace `monitoring`. O deploy local escreve no repositório GitOps; quem aplica no cluster é o Argo
+CD. Diferença de borda: o Gateway local mantém um `X-Request-Id` externo; o AGC gera o próprio.
+
 ## Mudando o contrato
 
 1. Abra PRs nos dois repositórios, com links cruzados, e incremente a versão no título dos dois

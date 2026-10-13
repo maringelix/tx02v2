@@ -8,6 +8,41 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- The local lab (docs/LAB_LOCAL.md), ported from tx01v2: the whole v1 platform on Docker, with no
+  cloud account. `make e2e` verified locally (26 probes, destroy with no leftovers).
+  - `terraform/envs/local` (providers docker 4.6.0, tls 4.4.1, random 3.9.1): network
+    `tx02v2-local` (`10.251.0.0/24`), kind 1.36 cluster, emulated ACR (registry 3.1.2, push to
+    `localhost:5002`), PostgreSQL Flexible Server (PostgreSQL 17, TLS only, lab CA), Blob Storage
+    (Versity S3 Gateway 1.8.0, S3 API), load balancer (cloud-provider-kind 0.12.0) and git server
+    (Soft Serve 0.12.3); 10 `terraform test` runs (plan only, mocked providers). Network and registry
+    port differ from tx01v2 (`10.250.0.0/24`, `5001`) so the two labs never collide.
+  - `platform/local`: Gateway API 1.6.3, Istio 1.31.1 ambient, cert-manager 1.21.2 (`lab-ca`),
+    External Secrets 2.12.0 (`local-secrets`, on top of `platform/values/external-secrets.yaml`),
+    metrics-server, kube-prometheus-stack 92.3.0 with an in-cluster alert sink, Loki 7.3.0 + Alloy
+    1.13.1, Argo CD 10.10.3, Gatekeeper 3.23.1 with six policies from v1 in `deny`, Trivy Operator
+    0.37.0, Velero 12.2.1 (AWS/S3 plugin against the emulator only), Chaos Mesh 2.8.4; charts pinned
+    by version and SHA256, images by digest (same pins as tx01v2); profiles `core`, `observability`,
+    `operations`, `full`.
+  - The edge keeps an external `X-Request-Id` (EnvoyFilter `gateway-preserve-request-id`), as the
+    dx02v2 smoke on kind expects; Application Gateway for Containers assigns its own id in Azure (not
+    emulated). Trivy Operator in ClientServer mode with the built-in Trivy server.
+  - The dx02v2 local deploy targets: AppProject `dx02v2`, Secrets `lab-secrets/tx02v2-lab-db-app`,
+    `lab-secrets/tx02v2-lab-app-admin-token` (the Key Vault secret names of contract v1) and
+    `lab-secrets/gitops-push-key`, namespace `monitoring` in the ambient mesh.
+  - `platform/local/check.sh`: 26 probes with real traffic or API calls (mTLS and authorization,
+    HTTPS through the emulated load balancer, X-Request-Id pass-through, alert delivery, logs, GitOps
+    sync and self-heal, policy denials, vulnerability reports, backup/restore drill, chaos experiment
+    with a hypothesis).
+  - `scripts/local-lab.sh` (up, down, check, e2e, kubeconfig, status) and
+    `scripts/leftovers-local.sh`; local contract `lab-system/lab-contract` (docs/CONTRATO.md).
+  - Harness: checks `local-versions`, `helm-template-local`, `kubeconform-local`, `policy-gator`,
+    `terraform-validate:envs/local`, `terraform-test:envs/local`; stage `e2e` (`local-lab-e2e`,
+    `make e2e`) and the CI job `e2e`; tools kind 0.33.0 and gator 3.23.1. `policy-terraform` allows
+    `random_password` only in `terraform/envs/local` and forbids cloud providers, remote backends,
+    `0.0.0.0` ports and privileged containers there; `trivy-config` skips the gator fixtures.
+
+### Added (first v2)
+
 - Initial v2 of the Azure infrastructure lab, rebuilt from scratch with the lessons of v1
   (docs/ARQUITETURA.md, "v1 → v2"):
   - `terraform/bootstrap`: resource provider registrations, hardened state storage account (Entra ID

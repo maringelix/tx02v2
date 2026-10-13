@@ -1,0 +1,26 @@
+# Envoy at the edge replaces an external X-Request-Id by default. The dx02v2 smoke test on compose and
+# kind (its default edge) expects the id the client sent to come back, so every Istio Gateway of the lab
+# keeps it (context GATEWAY only: sidecars and waypoints are not touched). This is NOT how Application
+# Gateway for Containers behaves: AGC assigns its own x-request-id GUID (dx02v2 SMOKE_EDGE=agc checks
+# that in Azure). The app still decides whether an incoming id is safe
+# (dx02v2 api/src/middleware/request-id.ts).
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: gateway-preserve-request-id
+  namespace: istio-system
+spec:
+  configPatches:
+    - applyTo: NETWORK_FILTER
+      match:
+        context: GATEWAY
+        listener:
+          filterChain:
+            filter:
+              name: envoy.filters.network.http_connection_manager
+      patch:
+        operation: MERGE
+        value:
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+            preserve_external_request_id: true

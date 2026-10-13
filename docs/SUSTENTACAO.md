@@ -14,8 +14,8 @@ cobre o app (ver `dx02v2`), mas lista o que precisa mudar junto com ele.
 - Harness completo (`HARNESS_STRICT=1 make verify`) `verificado no CI` com 32 checks (jobs `static`
   e `test` verdes no GitHub); com os checks do lab local são 38, `verificado localmente` em container
   Linux (o CI ainda não rodou essa versão).
-- Lab local (`docs/LAB_LOCAL.md`): `make e2e` com o perfil `full` (26 sondas) `verificado localmente`
-  em 2026-10-13 (rodada do zero, destroy sem sobras); roda também no job `e2e` do CI.
+- Lab local (`docs/LAB_LOCAL.md`): `make e2e` com o perfil `full` (26 sondas) `verificado no CI`
+  (job `e2e`) e `verificado localmente` em 2026-10-13 (rodada do zero, destroy sem sobras).
 - Bootstrap, apply, plan em PRs, plataforma e destroy: `não executado em nuvem (v2)`.
 - Contrato com o dx02v2: versão 1 (`docs/CONTRATO.md`).
 

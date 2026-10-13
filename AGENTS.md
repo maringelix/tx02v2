@@ -17,7 +17,7 @@ is the source of truth. The full rule list (pt-BR) is [docs/GUARDRAILS.md](docs/
   `terraform/envs/local` (kind + emulated ACR, PostgreSQL Flexible Server, Blob Storage through an S3
   API emulator, load balancer, git server) and `platform/local` (Istio ambient, cert-manager, ESO,
   Prometheus/Alertmanager/Grafana, Loki/Alloy, Argo CD, Gatekeeper, Trivy Operator, Velero, Chaos
-  Mesh). `make e2e` proves it with 26 probes (CI job `e2e`; verified locally on 2026-10-13). It is not cloud-mutating: agents may run it, one heavy run at a time (8 GB of Docker
+  Mesh). `make e2e` proves it with 26 probes (CI job `e2e`; verified in CI and locally on 2026-10-13). It is not cloud-mutating: agents may run it, one heavy run at a time (8 GB of Docker
   memory for `full`).
 - The interface with `dx02v2` is [docs/CONTRATO.md](docs/CONTRATO.md) (contract v1, owned here; the
   local lab has its own local contract, `lab-system/lab-contract`).

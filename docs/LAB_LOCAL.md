@@ -6,8 +6,8 @@ de verdade (`docs/LICOES_APRENDIDAS.md`). O lab local constrói essa plataforma 
 máquina, com Terraform, e prova cada peça com tráfego ou chamadas reais. Nada aqui fala com a Azure.
 É a mesma plataforma do lab local do `tx01v2`, com os nomes do `tx02v2` e os gêmeos Azure abaixo.
 
-Status: `verificado localmente` (rodada completa do zero em 2026-10-13: apply, perfil `full`, 26
-sondas, destroy sem sobras); roda também no job `e2e` do CI.
+Status: `verificado no CI` (job `e2e`, 26 sondas, 2026-10-13) e `verificado localmente` (rodada
+completa do zero no mesmo dia: apply, perfil `full`, destroy sem sobras).
 
 ## O que é criado
 

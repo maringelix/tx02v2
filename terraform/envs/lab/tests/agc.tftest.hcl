@@ -5,6 +5,7 @@ mock_provider "azurerm" {
 }
 
 variables {
+  github_owner        = "maringelix"
   name                = "tx02v2-lab"
   location            = "eastus2"
   resource_group_name = "tx02v2-lab"

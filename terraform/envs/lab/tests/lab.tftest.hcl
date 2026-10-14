@@ -6,6 +6,7 @@ mock_provider "azurerm" {
 }
 
 variables {
+  github_owner                    = "maringelix"
   api_server_authorized_ip_ranges = ["203.0.113.10/32", "198.51.100.0/24"]
   deploy_principal_id             = "dddddddd-dddd-dddd-dddd-dddddddddddd"
   cluster_admin_principal_ids     = ["11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"]

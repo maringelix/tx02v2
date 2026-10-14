@@ -5,8 +5,9 @@ mock_provider "azurerm" {
 }
 
 variables {
+  github_owner        = "maringelix"
   subscription_id     = "00000000-0000-0000-0000-000000000000"
-  budget_alert_emails = ["you@example.com"]
+  budget_alert_emails = ["lab-alerts@example.org"]
 }
 
 override_resource {
@@ -137,6 +138,16 @@ run "rejects_a_bad_github_owner" {
 
   variables {
     github_owner = "-not-valid-"
+  }
+
+  expect_failures = [var.github_owner]
+}
+
+run "placeholder_owner_is_refused" {
+  command = plan
+
+  variables {
+    github_owner = "your-github-user"
   }
 
   expect_failures = [var.github_owner]

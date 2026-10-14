@@ -5,8 +5,9 @@ mock_provider "azurerm" {
 }
 
 variables {
+  github_owner        = "maringelix"
   subscription_id     = "00000000-0000-0000-0000-000000000000"
-  budget_alert_emails = ["you@example.com", "ops@example.org"]
+  budget_alert_emails = ["lab-alerts@example.org", "ops@example.org"]
 }
 
 run "monthly_budget_with_four_alerts" {
@@ -35,7 +36,7 @@ run "monthly_budget_with_four_alerts" {
   assert {
     condition = alltrue([
       for n in azurerm_consumption_budget_subscription.monthly.notification :
-      n.enabled && n.operator == "GreaterThan" && n.contact_emails == tolist(["you@example.com", "ops@example.org"])
+      n.enabled && n.operator == "GreaterThan" && n.contact_emails == tolist(["lab-alerts@example.org", "ops@example.org"])
     ])
     error_message = "Every notification must be enabled, GreaterThan and sent to all budget_alert_emails."
   }
@@ -92,4 +93,14 @@ run "rejects_a_budget_below_one" {
   }
 
   expect_failures = [var.monthly_budget_amount]
+}
+
+run "placeholder_alert_email_is_refused" {
+  command = plan
+
+  variables {
+    budget_alert_emails = ["YOU@example.com"]
+  }
+
+  expect_failures = [var.budget_alert_emails]
 }

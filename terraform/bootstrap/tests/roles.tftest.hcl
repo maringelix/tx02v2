@@ -7,8 +7,9 @@ mock_provider "azurerm" {
 }
 
 variables {
+  github_owner        = "maringelix"
   subscription_id     = "00000000-0000-0000-0000-000000000000"
-  budget_alert_emails = ["you@example.com"]
+  budget_alert_emails = ["lab-alerts@example.org"]
 }
 
 override_resource {

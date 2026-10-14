@@ -4,6 +4,9 @@
 
 location = "eastus2"
 
+# Your GitHub user (the owner of your fork). The workflows pass github.repository_owner instead.
+github_owner = "your-github-user"
+
 # Your public IP as /32. GitHub-hosted runners need 0.0.0.0/0 plus
 # allow_api_server_from_anywhere = true for the platform/deploy workflows (docs/ARQUITETURA.md).
 api_server_authorized_ip_ranges = ["203.0.113.10/32"]

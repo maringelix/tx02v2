@@ -19,6 +19,7 @@ The lab family (v2):
 
 | Repository | Cloud | Role | Status |
 |---|---|---|---|
+| [`tx00v2`](https://github.com/maringelix/tx00v2) | all three | family hub: roadmap, family guardrails, cross-repo checks | see its status matrix |
 | [`tx01v2`](https://github.com/maringelix/tx01v2) | AWS | infrastructure (Terraform, EKS, RDS, platform layer) | see its status matrix |
 | [`dx01v2`](https://github.com/maringelix/dx01v2) | AWS | application | see its status matrix |
 | `tx02v2` (this repo) | Azure | infrastructure (Terraform, platform layer) | see status matrix |

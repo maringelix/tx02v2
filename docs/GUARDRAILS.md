@@ -122,7 +122,7 @@ privado (`AZU-0065`; ADR 19) e add-on Azure Policy (`AZU-0066`; IAC-09).
   meia-noite UTC.
 - O lab local prova a plataforma num nó kind, não na Azure; o cloud-provider-kind usa o socket do
   Docker (cria contêineres): rode o lab local só numa máquina descartável ou no CI (`docs/LAB_LOCAL.md`).
-  A rodada `e2e` ainda não foi executada neste repositório.
+  A rodada completa roda no job `e2e` do CI, obrigatório no ruleset.
 - Os namespaces `istio-system`, `monitoring-agents` e `chaos-mesh` do lab local são `privileged` por
   necessidade dos componentes; o webhook do Gatekeeper não avalia os namespaces da plataforma (para que
   ela suba mesmo com o Gatekeeper fora do ar).

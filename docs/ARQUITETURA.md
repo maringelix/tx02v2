@@ -53,7 +53,7 @@ está em `docs/CONTRATO.md`.
 
 A mesma arquitetura emulada no Docker (`terraform/envs/local` + `platform/local`), com a plataforma
 completa do v1 por cima; é o lab local do `tx01v2` com os nomes do `tx02v2` e os gêmeos Azure.
-Detalhes, sondas e limites: `docs/LAB_LOCAL.md` (rodada de ponta a ponta `planejado` aqui).
+Detalhes, sondas e limites: `docs/LAB_LOCAL.md` (rodada de ponta a ponta no job `e2e` do CI).
 
 ```mermaid
 flowchart LR

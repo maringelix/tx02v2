@@ -30,7 +30,7 @@ locals {
   # Resource providers of the lab (verified 2026-10-11). Microsoft.NetworkFunction and
   # Microsoft.ServiceNetworking are required by Application Gateway for Containers;
   # Microsoft.Consumption by the budget; Microsoft.OperationalInsights and Microsoft.Insights by the
-  # optional AKS control plane logs.
+  # traces of the app (Application Insights) and the optional AKS control plane logs.
   resource_providers = [
     "Microsoft.AppConfiguration",
     "Microsoft.Compute",

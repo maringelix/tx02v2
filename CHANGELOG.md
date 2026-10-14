@@ -28,6 +28,25 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Local lab, "Observability 2.0" (ported from tx01v2; the last step of the v1 roadmap, never started
+  there): Tempo 3.1.0 (grafana-community chart 3.1.0) and the OpenTelemetry Collector contrib 0.162.0
+  (chart 0.176.0) in the observability layer; every Istio Gateway reports its spans (Telemetry
+  `mesh-default`); spanmetrics with exemplars (scraped every 10 s: an exemplar lives one flush);
+  Grafana links logs, metrics and traces. Alertmanager also posts warning and critical alerts to Slack
+  (Secret `monitoring/alertmanager-slack`, `LOCAL_SLACK_WEBHOOK_URL`; without it the sink gets the Slack
+  message and a probe checks it). Chaos with hypotheses: NetworkChaos (100 ms) and StressChaos (CPU +
+  memory) next to the pod kill. The edge keeps a UUID-shaped `X-Request-Id` as sent. Local contract
+  version 2 (`tracing.otlp-endpoint`). 34 probes (was 26).
+- Contract version 2 (`not run in the cloud (v2)`): the cloud platform layer installs the same
+  Collector in the namespace `observability`, exporting to the new Application Insights
+  `tx02v2-lab-traces` (workspace-based, local authentication off: ingestion only with the Entra token
+  of the Collector, extension `azure_auth`). New identity `tx02v2-lab-otel` (Workload ID,
+  `observability/opentelemetry-collector`) with the new built-in role `Monitoring Metrics Publisher`
+  on that resource only: a role widening of `modules/role-ids` that also changes the ABAC condition of
+  `tx02v2-gha-apply` (re-apply the bootstrap). Ingestion is billed per GB, capped by
+  `log_daily_quota_gb` (docs/CUSTOS.md). `platform/uninstall.sh` removes the release; tests and the
+  `contract-platform`/`helm-template` checks cover the identity, role, resource, namespace, service
+  account, exporter and digest.
 - `FORK.md`: forking the lab step by step (what GitHub does not copy to a fork, the repository
   settings, the local lab, your own cloud account, troubleshooting), linked from both READMEs and
   CONTRIBUTING.md; the harness requires it.

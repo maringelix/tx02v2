@@ -140,6 +140,15 @@ mock_resource "azurerm_log_analytics_workspace" {
   }
 }
 
+mock_resource "azurerm_application_insights" {
+  defaults = {
+    id                  = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.Insights/components/tx02v2-lab-traces"
+    app_id              = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+    instrumentation_key = "00000000-0000-0000-0000-000000000000"
+    connection_string   = "InstrumentationKey=00000000-0000-0000-0000-000000000000;IngestionEndpoint=https://eastus2-0.in.applicationinsights.azure.com/"
+  }
+}
+
 mock_resource "azurerm_monitor_diagnostic_setting" {
   defaults = {
     id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ContainerService/managedClusters/tx02v2-lab|control-plane"

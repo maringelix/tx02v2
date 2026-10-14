@@ -1,4 +1,7 @@
-# Contrato tx02v2 <-> dx02v2 — versão 1 (2026-10-11)
+# Contrato tx02v2 <-> dx02v2 — versão 2 (2026-10-14)
+
+Versão 2: o OpenTelemetry Collector da camada de plataforma (namespace `observability`, traces para o
+Application Insights `tx02v2-lab-traces`). A versão 1 (2026-10-11) não tinha traces.
 
 Interface entre a infraestrutura (este repositório) e a aplicação (`dx02v2`). Esta é a fonte da
 verdade: `dx02v2/docs/CONTRATO.md` repete a parte que o app usa e aponta para cá. Qualquer mudança
@@ -12,7 +15,9 @@ serviços equivalentes da Azure.
 |---|---|---|
 | Identidades do GitHub: nomes, issuer, audience e um sujeito exato por credencial federada | `terraform/bootstrap/tests/identities.tftest.hcl` | `verificado localmente` |
 | Papéis do plan e do apply; a condição ABAC do apply lista exatamente os papéis que o root do lab atribui | `terraform/bootstrap/tests/roles.tftest.hcl`, `terraform/envs/lab/tests/roles.tftest.hcl` | `verificado localmente` |
-| Papéis de `dx02v2-gha-deploy`, dos `app_deployer_principal_ids`, do ESO, do ALB Controller e do kubelet | `terraform/envs/lab/tests/roles.tftest.hcl` | `verificado localmente` |
+| Papéis de `dx02v2-gha-deploy`, dos `app_deployer_principal_ids`, do ESO, do ALB Controller, do OpenTelemetry Collector e do kubelet | `terraform/envs/lab/tests/roles.tftest.hcl` | `verificado localmente` |
+| Application Insights dos traces só com ingestão por Entra ID (autenticação local desligada), workspace e limites diários | `terraform/envs/lab/tests/roles.tftest.hcl` (`traces_accept_only_entra_id_ingestion`) | `verificado localmente` |
+| Collector no namespace `observability`, exporter do Azure Monitor com Entra ID, mesmo digest do lab local | checks `contract-platform` e `helm-template` | `verificado localmente` |
 | As 15 chaves da App Configuration (prefixo, valores fixos, origem de cada valor) | `terraform/envs/lab/tests/lab.tftest.hcl`; o check `contract-appconfig` confere que `contract.tf` e a lista do harness são iguais e que cada chave tem uma linha na tabela deste arquivo | `verificado localmente` |
 | Key Vault, segredos write-only, PostgreSQL, ACR | `terraform/envs/lab/tests/data_stores.tftest.hcl` | `verificado localmente` |
 | AGC, frontend, política de WAF (Prevention, DRS 2.1, Bot Manager 1.1, 128 KB) e `none` sem WAF | `terraform/envs/lab/tests/agc.tftest.hcl` | `verificado localmente` |
@@ -46,6 +51,7 @@ serviços equivalentes da Azure.
 | Cluster AKS | `tx02v2-lab`, Kubernetes `1.36`, contas locais desligadas, Entra ID com Azure RBAC, OIDC issuer + workload identity, Azure CNI Overlay com dataplane Cilium (aplica NetworkPolicy) |
 | Nós | x86-64 (padrão `Standard_D2als_v6`): as imagens do dx02v2 são `linux/amd64`, então `node_vm_size` não pode ser um tamanho Arm64 (nada no código impede; é regra do contrato) |
 | Namespace do app | `dx02v2` — criado pela camada de plataforma do tx02v2 com os labels `pod-security.kubernetes.io/enforce=restricted`, `pod-security.kubernetes.io/enforce-version=latest` |
+| Traces (OpenTelemetry, versão 2) | `http://opentelemetry-collector.observability.svc:4318` (OTLP/HTTP). O Collector é instalado pela camada de plataforma no namespace `observability` (mesmos labels de Pod Security) e grava os spans no Application Insights `tx02v2-lab-traces` (workspace `tx02v2-lab-traces`, autenticação local desligada) com a identidade `tx02v2-lab-otel` (Workload ID, sujeito `system:serviceaccount:observability:opentelemetry-collector`; só `Monitoring Metrics Publisher` nesse Application Insights). O app não recebe nenhum papel Azure para isso |
 | RBAC Kubernetes do deployer | Role `dx02v2-deployer` + RoleBinding `dx02v2-deployers` no namespace `dx02v2`; sujeito `kind: User`, `name: <object ID da identidade dx02v2-gha-deploy>` (mais os object IDs de `app_deployer_principal_ids`) |
 | ACR | nome `tx02v2lab<suffix>`, Basic, usuário admin e pull anônimo desligados; repositórios `dx02v2/api`, `dx02v2/web`; imagens com a tag do SHA git completo (40 caracteres) do dx02v2. O Basic não tem imutabilidade de tags no repositório inteiro: o deploy recusa sobrescrever uma tag existente. A identidade kubelet do AKS tem `AcrPull` no registry |
 | Identidades OIDC do GitHub (user-assigned, em `tx02v2-bootstrap`) | `tx02v2-gha-plan`, `tx02v2-gha-apply`, `dx02v2-gha-deploy` |
@@ -189,7 +195,7 @@ resolvidas no texto acima, sem mudar a versão (nenhum valor mudou):
    é exatamente /24 (validação de `agc_subnet_cidr`); os `app_deployer_principal_ids` recebem os
    papéis Azure de `dx02v2-gha-deploy` (teste `app_deployers_get_the_roles_of_the_deploy_identity`).
 
-## Lab local (contrato local, versão 1)
+## Lab local (contrato local, versão 2)
 
 O lab local (`docs/LAB_LOCAL.md`) é um contrato à parte, com versão própria (chave `version`), lido
 pelo deploy local do dx02v2. Ele espelha o contrato da nuvem com nomes do lab local; não muda nada
@@ -198,7 +204,7 @@ Publicado por `platform/local/install.sh` no ConfigMap `lab-system/lab-contract`
 
 | Chave | Valor | Equivale na nuvem |
 |---|---|---|
-| `version` | `1` | versão deste arquivo |
+| `version` | `2` (2026-10-14: `tracing.otlp-endpoint`; a versão 1 não tinha traces) | versão deste arquivo |
 | `cluster-name` | `tx02v2-local` | `cluster-name` |
 | `network-cidr` | `10.251.0.0/24` (ou `subnet_cidr`) | `vnet-cidr` |
 | `registry` | `registry.tx02v2.local` (nome das imagens no cluster) | `acr/login-server` (prefixo) |
@@ -214,6 +220,7 @@ Publicado por `platform/local/install.sh` no ConfigMap `lab-system/lab-contract`
 | `gitops.push-key-secret` | `lab-secrets/gitops-push-key` (chave SSH do push, `kubernetes.io/ssh-auth`) | identidade `dx02v2-gha-deploy` |
 | `argocd.project` | `dx02v2` (AppProject: só o repositório GitOps, só o namespace `dx02v2`, só os kinds do deploy, nada de Secret ou recurso de cluster) | Role `dx02v2-deployer` |
 | `monitoring.prometheus-service-account` | `monitoring/kube-prometheus-stack-prometheus` (identidade do Prometheus no mesh) | — |
+| `tracing.otlp-endpoint` | `http://opentelemetry-collector.monitoring.svc:4318` (OTLP/HTTP do OpenTelemetry Collector; o app manda os spans por ele, pelo mesh, e os Gateways mandam os deles em OTLP/gRPC na porta 4317) | `http://opentelemetry-collector.observability.svc:4318` |
 
 Os Secrets `tx02v2-lab-db-app` e `tx02v2-lab-app-admin-token` ficam no namespace `lab-secrets` (o
 gêmeo local do Key Vault) com os mesmos nomes dos segredos do Key Vault, que já são válidos no

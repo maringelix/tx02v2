@@ -213,7 +213,7 @@ variable "enable_control_plane_logs" {
 }
 
 variable "log_retention_days" {
-  description = "Retention of the Log Analytics workspace (30 is the minimum of the PerGB2018 tier)."
+  description = "Retention of the Log Analytics workspaces: traces, and control plane logs when enabled (30 is the minimum of the PerGB2018 tier)."
   type        = number
   default     = 30
 
@@ -224,7 +224,7 @@ variable "log_retention_days" {
 }
 
 variable "log_daily_quota_gb" {
-  description = "Daily ingestion cap of the Log Analytics workspace (ingestion stops for the day when reached)."
+  description = "Daily ingestion cap of each Log Analytics workspace and of the Application Insights of the traces (ingestion stops for the day when reached)."
   type        = number
   default     = 0.5
 

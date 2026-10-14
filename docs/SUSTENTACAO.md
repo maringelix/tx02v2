@@ -14,10 +14,11 @@ cobre o app (ver `dx02v2`), mas lista o que precisa mudar junto com ele.
 - Harness completo (`HARNESS_STRICT=1 make verify`) `verificado no CI` com 32 checks (jobs `static`
   e `test` verdes no GitHub); com os checks do lab local são 38, `verificado localmente` em container
   Linux (o CI ainda não rodou essa versão).
-- Lab local (`docs/LAB_LOCAL.md`): `make e2e` com o perfil `full` (26 sondas) `verificado no CI`
-  (job `e2e`) e `verificado localmente` em 2026-10-13 (rodada do zero, destroy sem sobras).
+- Lab local (`docs/LAB_LOCAL.md`): `make e2e` com o perfil `full` (34 sondas) `verificado no CI`
+  (job `e2e`); `verificado localmente` em 2026-10-13 (`full`, 26 sondas de então, destroy sem sobras)
+  e 2026-10-14 (`observability`, com traces e Slack).
 - Bootstrap, apply, plan em PRs, plataforma e destroy: `não executado em nuvem (v2)`.
-- Contrato com o dx02v2: versão 1 (`docs/CONTRATO.md`).
+- Contrato com o dx02v2: versão 2 de 2026-10-14, com o endpoint OTLP do Collector (`docs/CONTRATO.md`).
 
 ## 3. Rotinas
 
@@ -52,7 +53,7 @@ cobre o app (ver `dx02v2`), mas lista o que precisa mudar junto com ele.
 | Schema do ClusterSecretStore (kubeconform) | datreeio/CRDs-catalog `f3e4382` (2026-06-02) | — | `docs/HARNESS.md` | Reavaliar a cada revisão trimestral (5.7) |
 | Exceções do trivy | 2 entradas (`AZU-0012`, `AZU-0013`) | 2027-04-30 | `.trivyignore.yaml` | Revisar até abril de 2027 (5.9) |
 | Istio (lab local) | 1.31.1 | ~2027-02 (6 semanas depois da 1.33) | [releases suportadas](https://istio.io/latest/docs/releases/supported-releases/) | Trimestral (5.12), junto com o tx01v2 |
-| Demais charts do lab local | `platform/local/versions.env` (cert-manager 1.21.2, kube-prometheus-stack 92.3.0, Loki 7.3.0, Alloy 1.13.1, Argo CD 10.10.3, Gatekeeper 3.23.1, Trivy Operator 0.37.0, Velero 12.2.1, Chaos Mesh 2.8.4, metrics-server 3.14.0) | cada projeto mantém as versões recentes | releases de cada projeto | Trimestral (5.12), junto com o tx01v2 |
+| Demais charts do lab local | `platform/local/versions.env` (cert-manager 1.21.2, kube-prometheus-stack 92.3.0, Loki 7.3.0, Alloy 1.13.1, Tempo 3.1.0, OpenTelemetry Collector 0.176.0, Argo CD 10.10.3, Gatekeeper 3.23.1, Trivy Operator 0.37.0, Velero 12.2.1, Chaos Mesh 2.8.4, metrics-server 3.14.0) | cada projeto mantém as versões recentes | releases de cada projeto | Trimestral (5.12), junto com o tx01v2 |
 | Imagens dos serviços emulados | registry 3.1.2, Versity S3 Gateway 1.8.0, Soft Serve 0.12.3, cloud-provider-kind 0.12.0, PostgreSQL 17 | sem data fixa | `terraform/envs/local/images.tf` | Trimestral (5.12) |
 | kind / gator | 0.33.0 (nó `kindest/node:v1.36.4`) / 3.23.1 | sem política publicada | releases do kind e do Gatekeeper | Trimestral (5.12); o nó segue o minor do AKS do lab |
 
@@ -142,6 +143,16 @@ O `platform/install.sh` recusa um chart com outro SHA256 e pods com digests que 
 `platform/values/external-secrets.yaml` (controller, webhook e cert controller usam a mesma imagem;
 o `version-consistency` exige `v<versão>@sha256:` três vezes). Use a mesma release e o mesmo digest
 do tx01v2. Se a versão de API dos CRDs mudar (`external-secrets.io/v1` hoje), é mudança de contrato.
+
+### 5.6.1 OpenTelemetry Collector (nuvem e lab local, junto com o tx01v2)
+
+O lab local e a camada de plataforma usam o mesmo chart (`OTEL_COLLECTOR_CHART_VERSION` em
+`platform/versions.env`) e o mesmo digest de `otel/opentelemetry-collector-contrib` (o `helm-template`
+recusa digests diferentes). Na troca: leia as notas da release do Collector (componentes renomeados,
+como `otlp_grpc`, `k8s_attributes`, `azure_monitor` e `azure_auth`), atualize o digest nos dois values,
+a versão e o SHA256 do chart em `platform/versions.env` (`OTEL_COLLECTOR_CHART_*`, usados pela nuvem e
+pelo lab local) e rode `make verify` e `make e2e` (o lab local prova o
+pipeline; o exporter do Azure Monitor só roda em nuvem).
 
 ### 5.7 Schemas do kubeconform
 

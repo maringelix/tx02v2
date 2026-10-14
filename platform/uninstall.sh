@@ -9,7 +9,8 @@
 #      objects exist (an ALB-managed deployment someone added by hand), deletes them and waits
 #      until the AGC resources the controller created for them are gone from Azure;
 #   3. deletes Services of type LoadBalancer (their public IPs live in the AKS node resource group);
-#   4. uninstalls the External Secrets Operator and the ALB Controller releases.
+#   4. uninstalls the OpenTelemetry Collector, the External Secrets Operator and the ALB Controller
+#      releases.
 # CLOUD-MUTATING. Fails loudly on any error or timeout. Needs the same tools as platform/install.sh.
 # RESOURCE_GROUP and CLUSTER_NAME default to the contract names (tx02v2-lab): the teardown does
 # not depend on App Configuration.
@@ -135,6 +136,7 @@ main() {
   delete_load_balancer_services
 
   log "uninstalling the platform releases"
+  helm uninstall opentelemetry-collector --namespace observability --ignore-not-found --wait=watcher --timeout 10m
   helm uninstall external-secrets --namespace external-secrets --ignore-not-found --wait=watcher --timeout 10m
   helm uninstall alb-controller --namespace azure-alb-system --ignore-not-found --wait=watcher --timeout 10m
   log "platform removed from $CLUSTER_NAME"

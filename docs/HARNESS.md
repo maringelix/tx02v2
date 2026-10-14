@@ -41,9 +41,9 @@ o `tool-versions` uma vez), mais o `local-lab-e2e` no estágio `e2e` (`make e2e`
 | `test` | `make tools && make test` | `test` |
 | `e2e` | `make tools && make e2e` | `e2e` (o lab local; diagnósticos como artifact em caso de falha) |
 
-Os ids `static` e `test` são estáveis: são os checks exigidos pelo ruleset
-(`.github/rulesets/main.json`); o `policy-workflows` falha se um deles sumir. O `e2e` roda em todo PR
-e precisa estar verde para o merge (disciplina do mantenedor; ainda não está no ruleset). O CI não
+Os ids `static`, `test` e `e2e` são estáveis: são os checks exigidos pelo ruleset
+(`.github/rulesets/main.json`; o `e2e`, o lab local, entrou em 2026-10-13); o `policy-workflows` falha se
+um deles sumir. O CI não
 recebe credenciais da Azure.
 
 ## Modo estrito

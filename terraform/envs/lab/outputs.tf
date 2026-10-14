@@ -79,3 +79,12 @@ output "alb_identity_client_id" {
   description = "Client ID of tx02v2-lab-alb (albController.podIdentity.clientID of the ALB Controller chart)."
   value       = azurerm_user_assigned_identity.alb.client_id
 }
+output "otel_identity_client_id" {
+  description = "Client ID of tx02v2-lab-otel (ServiceAccount annotation of the OpenTelemetry Collector)."
+  value       = azurerm_user_assigned_identity.otel.client_id
+}
+
+output "traces_application_insights_id" {
+  description = "Application Insights resource that receives the traces of the app (contract v2)."
+  value       = azurerm_application_insights.traces.id
+}

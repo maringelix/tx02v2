@@ -25,6 +25,7 @@ em nuvem (`não executado em nuvem (v2)`).
 | Zona DNS privada do PostgreSQL | 1 | US$0,50/zona-mês + US$0,40/milhão de consultas | 0,001 | 0,02 | 0,50 |
 | Key Vault Standard | 2 segredos | US$0,03 por 10 mil operações | ~0 | ~0 | centavos |
 | App Configuration Free | 1 store | sem custo (limite de 1.000 requisições por dia) | 0,000 | 0,00 | 0,00 |
+| Traces do app: Application Insights + workspace `tx02v2-lab-traces` (contrato v2, sempre) | volume do lab (alguns MB por rodada); teto de 0,5 GB/dia em cada um | o mesmo preço do Log Analytics abaixo (ingestão por GB; a franquia de 5 GB/mês cobre o volume do lab) | ~0 (até 0,058 no teto) | ~0 (até 1,38) | ~0 |
 | Log Analytics (opcional, `enable_control_plane_logs = false`) | teto de 0,5 GB/dia | US$2,76/GB depois de 5 GB/mês grátis por conta de faturamento; 31 dias de retenção sem custo | (até 0,058) | (até 1,38) | (até ~28; ~42 se a franquia já estiver usada) |
 | State do Terraform (Blob Hot LRS, bootstrap) | poucos KB | US$0,0184/GB-mês + operações | ~0 | ~0 | centavos |
 | Managed identities, VNet, NSG, budget | — | sem cobrança | 0,000 | 0,00 | 0,00 |
@@ -113,6 +114,9 @@ Application Gateway v2 pelo AGC (cobrado por hora, sem instâncias) e deixa o WA
   WebApplicationFirewallPolicy quando `waf/policy-id` é `none`.
 - Não suba `node_count` nem troque o tamanho dos nós sem refazer a conta; o autoscaler pode chegar a
   3 nós sozinho.
+- Os traces do app (Application Insights `tx02v2-lab-traces`) existem em toda rodada: o volume do lab
+  é de poucos MB, e `log_daily_quota_gb` (0,5 GB/dia) limita o pior caso; os spans das sondas de
+  saúde (`/healthz`, `/readyz`) nem são criados.
 - `enable_control_plane_logs = true` cria um workspace do Log Analytics com teto de 0,5 GB/dia; a
   franquia de 5 GB/mês é da conta de faturamento inteira, não deste lab.
 - Créditos do Free Trial escondem a fatura: confira o Cost Management nas primeiras horas de cada

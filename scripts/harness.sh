@@ -38,13 +38,13 @@ ESO_CHART_REPO="https://charts.external-secrets.io"
 RENDER_VAULT_URI="https://tx02v2-lab-00000000.vault.azure.net/"
 RENDER_DEPLOYERS=(00000000-0000-0000-0000-000000000000 11111111-1111-1111-1111-111111111111)
 
-# Contract v1 (docs/CONTRATO.md): the App Configuration keys under tx02v2/lab/ that dx02v2 reads.
+# Contract v2 (docs/CONTRATO.md): the App Configuration keys under tx02v2/lab/ that dx02v2 reads.
 CONTRACT_KEYS=(
   location resource-group cluster-name vnet-cidr agc-subnet-cidr postgres-subnet-cidr acr/login-server
   keyvault/uri db/secret-name app/admin-token-secret-name eso/cluster-secret-store agc/id agc/frontend-name
   waf/policy-id deploy/principal-id
 )
-# Contract v1: rules of the Role dx02v2-deployer, one "apiGroup|resource|verbs" per resource
+# Contract v2 (unchanged since v1): rules of the Role dx02v2-deployer, one "apiGroup|resource|verbs" per resource
 # (verbs sorted). The ALB Controller 1.12.2 CRDs use singular-looking plurals on purpose.
 ROLE_CRUD="create,delete,get,list,patch,update,watch"
 ROLE_READ="get,list,watch"
@@ -76,6 +76,7 @@ declare -A BUILTIN_ROLE_IDS=(
   [4633458b-17de-408a-b874-0445c86b69e6]="Key Vault Secrets User"
   [b86a8fe4-44ce-4948-aee5-eccb2c155cd7]="Key Vault Secrets Officer"
   [f1a07417-d97a-45cb-824c-7a7467783830]="Managed Identity Operator"
+  [3913510d-42f4-4e42-8a64-420c390055eb]="Monitoring Metrics Publisher"
   [4d97b98b-1d4f-4787-a291-c67834d212e7]="Network Contributor"
   [8e3af657-a8ff-443c-a75c-2fe8c4bcb635]="Owner"
   [acdd72a7-3385-48ef-bd42-f606fba81ae7]="Reader"
@@ -123,6 +124,8 @@ LOCAL_CHARTS=(
   "KPS_REPO KPS_VERSION KPS_SHA256 kube-prometheus-stack kube-prometheus-stack"
   "GRAFANA_REPO LOKI_VERSION LOKI_SHA256 loki loki"
   "GRAFANA_REPO ALLOY_VERSION ALLOY_SHA256 alloy alloy"
+  "GRAFANA_COMMUNITY_REPO TEMPO_VERSION TEMPO_SHA256 tempo tempo"
+  "OTEL_COLLECTOR_REPO OTEL_COLLECTOR_CHART_VERSION OTEL_COLLECTOR_CHART_SHA256 opentelemetry-collector otel-collector"
   "ARGOCD_REPO ARGOCD_VERSION ARGOCD_SHA256 argo-cd argo-cd"
   "GATEKEEPER_REPO GATEKEEPER_VERSION GATEKEEPER_SHA256 gatekeeper gatekeeper"
   "TRIVY_OPERATOR_REPO TRIVY_OPERATOR_VERSION TRIVY_OPERATOR_SHA256 trivy-operator trivy-operator"
@@ -901,7 +904,7 @@ check_kubeconform() {
     "$rendered"
 }
 
-# The platform layer of contract v1, parsed from the rendered manifests (kubectl, no cluster):
+# The platform layer of contract v2, parsed from the rendered manifests (kubectl, no cluster):
 # exact objects, Pod Security labels, Role rules, RoleBinding subjects, ClusterSecretStore;
 # plus the Helm values and the pins of platform/versions.env.
 # shellcheck disable=SC2016 # Go templates of kubectl, not shell expansions
@@ -912,22 +915,24 @@ check_contract_platform() {
   render_platform >"$rendered"
   got="$(kubectl_local "$rendered" '{{.apiVersion}} {{.kind}}/{{.metadata.name}}{{if .metadata.namespace}} ns={{.metadata.namespace}}{{end}}{{"\n"}}' | sort)"
   want="$(printf '%s\n' "external-secrets.io/v1 ClusterSecretStore/azure-key-vault" "rbac.authorization.k8s.io/v1 Role/dx02v2-deployer ns=dx02v2" \
-    "rbac.authorization.k8s.io/v1 RoleBinding/dx02v2-deployers ns=dx02v2" "v1 Namespace/dx02v2" | sort)"
+    "rbac.authorization.k8s.io/v1 RoleBinding/dx02v2-deployers ns=dx02v2" "v1 Namespace/dx02v2" "v1 Namespace/observability" | sort)"
   [[ "$got" == "$want" ]] || {
     printf 'platform/manifests must render exactly these objects (docs/CONTRATO.md):\n%s\ngot:\n%s\n' "$want" "$got"
     rc=1
   }
-  got="$(kubectl_local "$rendered" '{{if eq .kind "Namespace"}}{{range $k, $v := .metadata.labels}}{{$k}}={{$v}}{{"\n"}}{{end}}{{end}}')"
-  [[ "$got" == $'pod-security.kubernetes.io/enforce=restricted\npod-security.kubernetes.io/enforce-version=latest' ]] || {
-    printf 'namespace dx02v2 must carry exactly the Pod Security labels enforce=restricted, enforce-version=latest; got:\n%s\n' "$got"
-    rc=1
-  }
+  for key in dx02v2 observability; do
+    got="$(kubectl_local "$rendered" "{{if and (eq .kind \"Namespace\") (eq .metadata.name \"$key\")}}{{range \$k, \$v := .metadata.labels}}{{\$k}}={{\$v}}{{\"\\n\"}}{{end}}{{end}}")"
+    [[ "$got" == $'pod-security.kubernetes.io/enforce=restricted\npod-security.kubernetes.io/enforce-version=latest' ]] || {
+      printf 'namespace %s must carry exactly the Pod Security labels enforce=restricted, enforce-version=latest; got:\n%s\n' "$key" "$got"
+      rc=1
+    }
+  done
   got="$(kubectl_local "$rendered" '{{if eq .kind "Role"}}{{range .rules}}{{$r := .}}{{range $r.apiGroups}}{{$g := .}}{{range $r.resources}}{{$g}}|{{.}}|{{range $r.verbs}}{{.}} {{end}}{{"\n"}}{{end}}{{end}}{{if or $r.resourceNames $r.nonResourceURLs}}restricted-rule{{"\n"}}{{end}}{{end}}{{end}}' |
     awk -F'|' 'NF == 3 { n = split($3, v, " "); s = ""; for (i = 1; i <= n; i++) for (j = i + 1; j <= n; j++) if (v[j] < v[i]) { t = v[i]; v[i] = v[j]; v[j] = t }
       for (i = 1; i <= n; i++) s = s (i > 1 ? "," : "") v[i]; print $1 "|" $2 "|" s; next } { print }' | sort)"
   want="$(printf '%s\n' "${CONTRACT_ROLE_RULES[@]}" | sort)"
   [[ "$got" == "$want" ]] || {
-    echo "Role dx02v2-deployer differs from contract v1 (lines: apiGroup|resource|verbs):"
+    echo "Role dx02v2-deployer differs from contract v2 (lines: apiGroup|resource|verbs):"
     diff <(printf '%s\n' "$want") <(printf '%s\n' "$got") | sed -n 's/^</  contract:/p; s/^>/  rendered:/p'
     rc=1
   }
@@ -990,24 +995,38 @@ check_contract_platform() {
     echo "ESO: the controller pods must carry the label azure.workload.identity/use: \"true\" (contract)"
     rc=1
   }
+  grep -qE '^  name: opentelemetry-collector$' platform/values/otel-collector.yaml || {
+    echo "OpenTelemetry Collector: the service account must be opentelemetry-collector (federated credential subject of tx02v2-lab-otel)"
+    rc=1
+  }
+  grep -qE '^  azure\.workload\.identity/use: "true"$' platform/values/otel-collector.yaml || {
+    echo "OpenTelemetry Collector: the pods must carry the label azure.workload.identity/use: \"true\" (contract v2)"
+    rc=1
+  }
+  if grep -vE '^[[:space:]]*#' platform/values/otel-collector.yaml | grep -qE 'client-id|InstrumentationKey='; then
+    echo "OpenTelemetry Collector: the client ID and the connection string come from install.sh, never from the values file"
+    rc=1
+  fi
   platform_versions
   for key in ALB_CONTROLLER_CHART_SHA256 ALB_CONTROLLER_IMAGE_SHA256 ALB_CONTROLLER_IMAGE_AMD64_SHA256 \
     ALB_CONTROLLER_BOOTSTRAP_IMAGE_SHA256 ALB_CONTROLLER_BOOTSTRAP_IMAGE_AMD64_SHA256 \
-    ALB_CONTROLLER_CRDS_IMAGE_SHA256 ALB_CONTROLLER_CRDS_IMAGE_AMD64_SHA256; do
+    ALB_CONTROLLER_CRDS_IMAGE_SHA256 ALB_CONTROLLER_CRDS_IMAGE_AMD64_SHA256 OTEL_COLLECTOR_CHART_SHA256; do
     [[ "${PV[$key]:-}" =~ ^[0-9a-f]{64}$ ]] || {
       echo "platform/versions.env: $key must be a SHA256 (64 hex characters)"
       rc=1
     }
   done
-  [[ "${PV[ESO_CHART_VERSION]:-}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
-    echo "platform/versions.env: ESO_CHART_VERSION is missing or malformed"
-    rc=1
-  }
+  for key in ESO_CHART_VERSION OTEL_COLLECTOR_CHART_VERSION; do
+    [[ "${PV[$key]:-}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+      echo "platform/versions.env: $key is missing or malformed"
+      rc=1
+    }
+  done
   return "$rc"
 }
 
 # The contract keys the lab writes to App Configuration (terraform/envs/lab/contract.tf) are
-# exactly the 15 keys of contract v1 (CONTRACT_KEYS, the list dx02v2 reads).
+# exactly the 15 keys of contract v2 (CONTRACT_KEYS, the list dx02v2 reads).
 check_contract_appconfig() {
   local rc=0 got want key
   got="$(awk '/^  contract_keys = \{/ { inside = 1; next } inside && /^  \}/ { inside = 0 } inside && /^    "[^"]+"[[:space:]]*=/ { k = $1; gsub(/"/, "", k); print k }' terraform/envs/lab/contract.tf | sort)"
@@ -1015,7 +1034,7 @@ check_contract_appconfig() {
   if [[ "$got" == "$want" ]]; then
     echo "terraform/envs/lab/contract.tf: the ${#CONTRACT_KEYS[@]} contract keys"
   else
-    echo "terraform/envs/lab/contract.tf must define exactly the ${#CONTRACT_KEYS[@]} keys of contract v1:"
+    echo "terraform/envs/lab/contract.tf must define exactly the ${#CONTRACT_KEYS[@]} keys of contract v2:"
     diff <(printf '%s\n' "$want") <(printf '%s\n' "$got") | sed -n 's/^</  missing:/p; s/^>/  unexpected:/p'
     rc=1
   fi
@@ -1046,7 +1065,7 @@ check_contract_appconfig() {
 # the ALB Controller chart archive must match its recorded SHA256 (its images cannot be pinned by
 # digest), then the values must be consumed as intended.
 check_helm_template() {
-  local rc=0 alb eso charts tgz want e
+  local rc=0 alb eso otel charts tgz want e
   need helm
   platform_versions
   export HELM_CACHE_HOME="$HARNESS_WORK_DIR/helm/cache" HELM_CONFIG_HOME="$HARNESS_WORK_DIR/helm/config" HELM_DATA_HOME="$HARNESS_WORK_DIR/helm/data"
@@ -1114,7 +1133,38 @@ check_helm_template() {
     echo "external-secrets chart: the controller pods must carry azure.workload.identity/use: \"true\""
     rc=1
   }
-  echo "rendered alb-controller ${PV[ALB_CONTROLLER_CHART_VERSION]} (chart SHA256 verified, $(wc -l <<<"$alb") lines) and external-secrets ${PV[ESO_CHART_VERSION]} ($(wc -l <<<"$eso") lines)"
+  helm pull opentelemetry-collector --repo https://open-telemetry.github.io/opentelemetry-helm-charts \
+    --version "${PV[OTEL_COLLECTOR_CHART_VERSION]}" --destination "$charts"
+  tgz="$charts/opentelemetry-collector-${PV[OTEL_COLLECTOR_CHART_VERSION]}.tgz"
+  [[ -f "$tgz" && "$(sha256_of "$tgz")" == "${PV[OTEL_COLLECTOR_CHART_SHA256]}" ]] || {
+    echo "the opentelemetry-collector chart ${PV[OTEL_COLLECTOR_CHART_VERSION]} is missing or its SHA256 differs from platform/versions.env"
+    return 1
+  }
+  otel="$(helm template opentelemetry-collector "$tgz" --namespace observability \
+    --values platform/values/otel-collector.yaml \
+    --set-string 'serviceAccount.annotations.azure\.workload\.identity/client-id=00000000-0000-0000-0000-000000000000')"
+  want="$(sed -n 's/^  digest: //p' platform/values/otel-collector.yaml)"
+  local -a expect_otel=(
+    "image: \"otel/opentelemetry-collector-contrib@$want\""
+    "serviceAccountName: opentelemetry-collector"
+    "azure.workload.identity/client-id: \"00000000-0000-0000-0000-000000000000\""
+    "azure.workload.identity/use: \"true\""
+    "name: otel-collector-azure-monitor"
+    "authenticator: azure_auth"
+    "- https://monitor.azure.com/.default"
+    "- azure_monitor"
+  )
+  for e in "${expect_otel[@]}"; do
+    grep -qF -- "$e" <<<"$otel" || {
+      echo "opentelemetry-collector chart: missing '$e'"
+      rc=1
+    }
+  done
+  [[ "$want" == "$(sed -n 's/^  digest: //p' platform/local/values/otel-collector.yaml)" ]] || {
+    echo "the cloud and the local OpenTelemetry Collector must run the same image digest"
+    rc=1
+  }
+  echo "rendered alb-controller ${PV[ALB_CONTROLLER_CHART_VERSION]} (chart SHA256 verified, $(wc -l <<<"$alb") lines), external-secrets ${PV[ESO_CHART_VERSION]} ($(wc -l <<<"$eso") lines) and opentelemetry-collector ${PV[OTEL_COLLECTOR_CHART_VERSION]} (chart SHA256 verified, $(wc -l <<<"$otel") lines)"
   return "$rc"
 }
 

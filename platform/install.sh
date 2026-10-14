@@ -3,12 +3,16 @@
 #   1. ALB Controller of Application Gateway for Containers (namespace azure-alb-system, GatewayClass
 #      azure-alb-external), from the OCI chart whose SHA256 is recorded in platform/versions.env
 #   2. External Secrets Operator (namespace external-secrets) with Microsoft Entra Workload ID
-#   3. platform/manifests (namespace dx02v2, deployer RBAC, ClusterSecretStore azure-key-vault)
+#   3. platform/manifests (namespaces dx02v2 and observability, deployer RBAC, ClusterSecretStore
+#      azure-key-vault)
+#   4. OpenTelemetry Collector (namespace observability, contract v2): OTLP from the app, traces to
+#      the Application Insights tx02v2-lab-traces with the Workload ID of tx02v2-lab-otel
 # CLOUD-MUTATING: run it only when you mean to (docs/RUNBOOK.md). Needs the Azure CLI (az login, or
 # azure/login in the platform workflow), kubectl, helm and kubelogin (scripts/install-tools.sh
 # kubectl helm kubelogin) and an identity listed in cluster_admin_principal_ids.
-# Reads the contract keys from App Configuration and the client IDs of tx02v2-lab-alb and
-# tx02v2-lab-eso; nothing comes from the Terraform state. Environment:
+# Reads the contract keys from App Configuration, the client IDs of tx02v2-lab-alb, tx02v2-lab-eso
+# and tx02v2-lab-otel and the connection string of tx02v2-lab-traces (an address: local
+# authentication is off there); nothing comes from the Terraform state. Environment:
 #   APPCONFIG_ENDPOINT          contract store (default: https://tx02v2-lab-<suffix>.azconfig.io of
 #                               the active subscription)
 #   APP_DEPLOYER_PRINCIPAL_IDS  JSON list of extra deployer object IDs (the Terraform variable
@@ -27,8 +31,10 @@ export PATH="$REPO_ROOT/.tools/bin:$PATH"
 
 ALB_CHART_OCI="oci://mcr.microsoft.com/application-lb/charts/alb-controller"
 ESO_CHART_REPO="https://charts.external-secrets.io"
+OTEL_CHART_REPO="https://open-telemetry.github.io/opentelemetry-helm-charts"
 ALB_NAMESPACE=azure-alb-system
 ESO_NAMESPACE=external-secrets
+OTEL_NAMESPACE=observability
 GATEWAY_CLASS=azure-alb-external
 SECRET_STORE=azure-key-vault
 GATEWAY_CLASS_WAIT_SECONDS="${GATEWAY_CLASS_WAIT_SECONDS:-300}"
@@ -153,6 +159,35 @@ install_external_secrets() {
     --wait=watcher --rollback-on-failure --timeout 10m
 }
 
+# traces_connection_string RG -> connection string of the Application Insights tx02v2-lab-traces.
+traces_connection_string() {
+  local rg=$1 cs
+  cs="$(az resource show --resource-group "$rg" --name "$LAB_NAME-traces" --resource-type Microsoft.Insights/components \
+    --query properties.ConnectionString --output tsv)" ||
+    die "cannot read the Application Insights $LAB_NAME-traces in $rg (did terraform apply of terraform/envs/lab run?)"
+  [[ "$cs" =~ ^InstrumentationKey=[0-9a-f-]{36}\;IngestionEndpoint=https://[A-Za-z0-9.-]+/ ]] ||
+    die "the connection string of $LAB_NAME-traces is not in the expected form"
+  printf '%s' "$cs"
+}
+
+# The Collector reads the connection string from a ConfigMap (stdin, never an argument); its
+# Workload ID client-id annotation comes from tx02v2-lab-otel.
+install_otel_collector() {
+  local client_id=$1 connection_string=$2 tgz
+  tgz="$WORK_DIR/opentelemetry-collector-$OTEL_COLLECTOR_CHART_VERSION.tgz"
+  helm pull opentelemetry-collector --repo "$OTEL_CHART_REPO" --version "$OTEL_COLLECTOR_CHART_VERSION" --destination "$WORK_DIR"
+  [[ -f "$tgz" && "$(sha256_of "$tgz")" == "$OTEL_COLLECTOR_CHART_SHA256" ]] ||
+    die "refusing the opentelemetry-collector chart $OTEL_COLLECTOR_CHART_VERSION: missing, or its SHA256 differs from platform/versions.env"
+  printf '%s' "$connection_string" | kubectl --namespace "$OTEL_NAMESPACE" create configmap otel-collector-azure-monitor \
+    --from-file=connection-string=/dev/stdin --dry-run=client --output yaml | kubectl apply -f - >/dev/null
+  log "installing the opentelemetry-collector chart $OTEL_COLLECTOR_CHART_VERSION (SHA256 verified; traces to Application Insights $LAB_NAME-traces)"
+  helm upgrade --install opentelemetry-collector "$tgz" \
+    --namespace "$OTEL_NAMESPACE" \
+    --values "$HERE/values/otel-collector.yaml" \
+    --set-string "serviceAccount.annotations.azure\.workload\.identity/client-id=$client_id" \
+    --wait=watcher --rollback-on-failure --timeout 10m
+}
+
 apply_manifests() {
   local file=$1 attempt
   # The ESO admission webhook can need a few seconds after `helm --wait` to serve its certificate.
@@ -168,7 +203,7 @@ apply_manifests() {
 
 main() {
   (($# == 0)) || die "usage: $0 (configuration through environment variables, see the header)"
-  local rg cluster vault deployer store tenant alb_client eso_client id deployers extra
+  local rg cluster vault deployer store tenant alb_client eso_client otel_client traces id deployers extra
   require_cmd az kubectl helm kubelogin
   require_az_login
   load_platform_versions
@@ -197,8 +232,12 @@ main() {
   mask "$tenant"
   alb_client="$(identity_client_id "$rg" "$LAB_NAME-alb")"
   eso_client="$(identity_client_id "$rg" "$LAB_NAME-eso")"
+  otel_client="$(identity_client_id "$rg" "$LAB_NAME-otel")"
+  traces="$(traces_connection_string "$rg")"
   mask "$alb_client"
   mask "$eso_client"
+  mask "$otel_client"
+  mask "$traces"
 
   # Rendered before anything is installed: a malformed contract value stops the script here.
   "$HERE/render-manifests.sh" "$vault" "$deployers" >"$WORK_DIR/manifests.yaml"
@@ -210,9 +249,10 @@ main() {
   install_external_secrets "$eso_client" "$tenant"
   log "applying platform/manifests"
   apply_manifests "$WORK_DIR/manifests.yaml"
+  install_otel_collector "$otel_client" "$traces"
   # Ready means ESO reached Key Vault with the Workload ID token of tx02v2-lab-eso.
   kubectl wait --for=condition=Ready "clustersecretstore/$store" --timeout=180s
-  log "platform ready: GatewayClass $GATEWAY_CLASS, ClusterSecretStore $store, namespace dx02v2"
+  log "platform ready: GatewayClass $GATEWAY_CLASS, ClusterSecretStore $store, namespace dx02v2, OTLP endpoint opentelemetry-collector.$OTEL_NAMESPACE.svc:4318"
 }
 
 main "$@"

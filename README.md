@@ -34,12 +34,12 @@ The lab family (v2):
 | Lint and IaC security scan (tflint + azurerm ruleset, trivy HIGH/CRITICAL, plain and with the example inputs) | `verified in CI` | `make static` (`tflint`, `trivy-config`, `trivy-config-tfvars`) |
 | Workflows, scripts, platform manifests and Helm values (actionlint, shellcheck, kubeconform, helm template with the chart SHA256) | `verified in CI` | `make static` (`actionlint`, `shellcheck`, `kubeconform`, `helm-template`) |
 | Secret scan and repository policies (no real identifiers or GUIDs, pinned actions, contract tags on every taggable resource, v1 regressions) | `verified in CI` | `make static` (`gitleaks`, `policy-*`, `repo-structure`, `version-consistency`) |
-| Contract v1 with dx02v2 (15 App Configuration keys, namespace, deployer RBAC, ClusterSecretStore) | `verified in CI` | `make static` (`contract-appconfig`, `contract-platform`); [docs/CONTRATO.md](docs/CONTRATO.md) |
-| Terraform unit tests with a mocked azurerm provider (OIDC subjects, state account, ABAC role list = lab roles, budget, AKS, PostgreSQL, Key Vault, ACR, AGC + WAF, contract keys, role assignments, negative validations; 74 runs) | `verified in CI` | `make test`; CI job `test` |
+| Contract v2 with dx02v2 (15 App Configuration keys, namespaces `dx02v2` and `observability`, deployer RBAC, ClusterSecretStore, OTLP endpoint of the Collector) | `verified in CI` | `make static` (`contract-appconfig`, `contract-platform`); [docs/CONTRATO.md](docs/CONTRATO.md) |
+| Terraform unit tests with a mocked azurerm provider (OIDC subjects, state account, ABAC role list = lab roles, budget, AKS, PostgreSQL, Key Vault, ACR, AGC + WAF, contract keys, role assignments, Application Insights with Entra ID ingestion only, negative validations; 75 runs) | `verified in CI` | `make test`; CI job `test` |
 | Bootstrap (resource providers, state account, lab resource group, GitHub OIDC identities, budget) | `not run in the cloud (v2)` | `terraform/bootstrap`, `docs/RUNBOOK.md` |
 | Lab apply (VNet, AKS 1.36, PostgreSQL 17, Key Vault, ACR, AGC + WAF, App Configuration contract) | `not run in the cloud (v2)` | `.github/workflows/terraform-apply.yml` |
 | Plan on pull requests | `not run in the cloud (v2)` | `.github/workflows/terraform-plan.yml` |
-| Platform layer (ALB Controller 1.12.2, External Secrets Operator 2.12.0) | `not run in the cloud (v2)` | `.github/workflows/platform.yml`, `platform/install.sh` |
+| Platform layer (ALB Controller 1.12.2, External Secrets Operator 2.12.0, OpenTelemetry Collector 0.162.0 sending the traces of the app to Application Insights with Workload ID) | `not run in the cloud (v2)` | `.github/workflows/platform.yml`, `platform/install.sh`; the charts are rendered by `helm-template` |
 | Destroy + leftover check | `not run in the cloud (v2)` | `.github/workflows/terraform-destroy.yml`, `scripts/leftovers.sh` |
 | HTTPS on the Application Gateway for Containers listener | `planned` | outside contract v1 (`docs/CONTRATO.md`) |
 | Repository settings as code (ruleset, environment `lab`) | `verified locally` | `scripts/repo-guardrails.sh` applied; read back with `gh api` on 2026-10-14 (`docs/PUBLICACAO.md`) |
@@ -48,13 +48,14 @@ The lab family (v2):
 | Service mesh: Istio 1.31 ambient, mTLS `STRICT`, identity-based `AuthorizationPolicy` | `verified in CI` | `make e2e` (`platform/local/check.sh`: allowed, other identity and plaintext probes) |
 | Gateway API on Istio behind the emulated load balancer, HTTPS with cert-manager (lab CA), HTTP → HTTPS | `verified in CI` | `make e2e` |
 | External Secrets (ClusterSecretStore `local-secrets`), metrics-server | `verified in CI` | `make e2e` |
-| Observability: Prometheus, Alertmanager (synthetic alert delivered), Grafana (ClusterIP), Loki + Alloy | `verified in CI` | `make e2e` |
+| Observability: Prometheus, Alertmanager (synthetic alert delivered, also as a Slack message), Grafana (ClusterIP), Loki + Alloy | `verified in CI` | `make e2e` |
+| Traces with OpenTelemetry: Collector → Tempo, Istio Gateway spans (W3C trace context), spanmetrics with exemplars, Grafana linking logs, metrics and traces | `verified in CI` | `make e2e` (`check_tracing`) |
 | GitOps with Argo CD 3.5 (commit → sync → self-heal from the lab git server) | `verified in CI` | `make e2e` |
 | Policy as code in the cluster: Gatekeeper 3.23 in `deny` (allowed registries, pinned images, resources, probes, labels, NodePort) | `verified in CI` | `make e2e` |
 | In-cluster scanning: Trivy Operator (vulnerability and configuration reports) | `verified in CI` | `make e2e` |
 | Backup and restore drill: Velero to the object storage emulator (namespace deleted, restored with its data) | `verified in CI` | `make e2e` |
-| Chaos engineering with a hypothesis: Chaos Mesh pod-kill, availability measured | `verified in CI` | `make e2e` |
-| The same add-ons on AKS | `planned` | the local platform shows the target; the cloud platform layer installs only the ALB Controller + ESO |
+| Chaos engineering with hypotheses: Chaos Mesh pod kill, 100 ms network latency, CPU and memory stress; availability, latency and restarts measured | `verified in CI` | `make e2e` |
+| The same add-ons on AKS | `planned` | the local platform shows the target; the cloud platform layer installs only the ALB Controller, ESO and the OpenTelemetry Collector |
 
 `verified in CI` rows (`HARNESS_STRICT=1 make verify`) run on every pull request, on every
 push to `main` and weekly (CI jobs `static` and `test`). A cloud row changes only with a
@@ -167,7 +168,7 @@ All docs are in Brazilian Portuguese.
 |---|---|
 | [FORK.md](FORK.md) | fork the lab: what GitHub does not copy, the local lab, your own cloud account |
 | [docs/ARQUITETURA.md](docs/ARQUITETURA.md) | diagram, ADRs, AWS ↔ Azure, v1 → v2 |
-| [docs/CONTRATO.md](docs/CONTRATO.md) | tx02v2 ⇄ dx02v2 contract v1 (source of truth) |
+| [docs/CONTRATO.md](docs/CONTRATO.md) | tx02v2 ⇄ dx02v2 contract v2 (source of truth) |
 | [docs/RUNBOOK.md](docs/RUNBOOK.md) | full cloud round |
 | [docs/LAB_LOCAL.md](docs/LAB_LOCAL.md) | the local lab: what is emulated, how to run it, probes, limits |
 | [docs/CUSTOS.md](docs/CUSTOS.md) | cost estimate per component, with and without the WAF |

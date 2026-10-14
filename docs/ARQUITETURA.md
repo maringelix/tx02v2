@@ -67,7 +67,7 @@ flowchart LR
     subgraph kind["kind tx02v2-local 1.36 (AKS)"]
       gw["Gateway istio + cert-manager lab-ca"]
       mesh["Istio ambient: ztunnel, mTLS STRICT"]
-      obs["Prometheus, Alertmanager, Grafana, Loki, Alloy"]
+      obs["Prometheus, Alertmanager, Grafana, Loki, Alloy, Tempo, OpenTelemetry Collector"]
       ops["Argo CD, Gatekeeper, Trivy Operator, Velero, Chaos Mesh"]
       eso["ESO local-secrets (Key Vault)"]
       app["namespace dx02v2"]
@@ -84,7 +84,7 @@ flowchart LR
 
 | # | Decisão | Motivo | Alternativa descartada |
 |---|---|---|---|
-| 1 | Microsoft Entra Workload ID para o ESO e o ALB Controller (identidades user-assigned `tx02v2-lab-eso` e `tx02v2-lab-alb`, uma credencial federada por ServiceAccount) | nenhum client secret existe; o pod troca o token do ServiceAccount (issuer OIDC do AKS) por um token do Entra ID | segredo de service principal em Secret do Kubernetes; pod-managed identity (descontinuada) |
+| 1 | Microsoft Entra Workload ID para o ESO, o ALB Controller e o OpenTelemetry Collector (identidades user-assigned `tx02v2-lab-eso`, `tx02v2-lab-alb` e `tx02v2-lab-otel`, uma credencial federada por ServiceAccount) | nenhum client secret existe; o pod troca o token do ServiceAccount (issuer OIDC do AKS) por um token do Entra ID | segredo de service principal em Secret do Kubernetes; pod-managed identity (descontinuada) |
 | 2 | Managed identities user-assigned com credenciais federadas do GitHub no lugar de app registrations | sem segredo, sem permissão no diretório do Entra (sem provider `azuread`); as identidades ficam no grupo do bootstrap e sobrevivem às rodadas | app registration com client secret guardado no GitHub (v1) |
 | 3 | Nada de provider `kubernetes`/`helm` no Terraform | o state não depende da API do cluster; o destroy não trava em objetos Kubernetes; camadas separadas | Helm via Terraform |
 | 4 | External Secrets Operator lê o Key Vault | os segredos ficam na Azure; o deployer nunca escreve Secrets | segredos criados pelo pipeline; CSI driver |
@@ -96,7 +96,7 @@ flowchart LR
 | 10 | Azure RBAC para administradores e Kubernetes RBAC para o deployer | contas locais desligadas; admins por `Azure Kubernetes Service RBAC Cluster Admin` (`cluster_admin_principal_ids`, validado, não vazio, sem o deployer); o deployer só obtém o kubeconfig e é limitado pela RoleBinding no namespace `dx02v2` | contas locais; papéis Azure de escrita para o deployer |
 | 11 | App Configuration (Free) como store do contrato | o dx02v2 lê os valores no deploy sem acessar o state; o Free não cobra e aceita 1.000 requisições por dia (cada deploy faz uma listagem) | remote state compartilhado (vaza o state inteiro) |
 | 12 | O bootstrap cria o grupo `tx02v2-lab` e as identidades de CI têm papéis só nele (ou no container do state) | nada no escopo da assinatura; o apply não toca nada fora do lab | apply como Owner da assinatura (v1) |
-| 13 | `Role Based Access Control Administrator` do apply com condição ABAC: só pode atribuir ou remover os 9 papéis de `modules/role-ids` | o lab atribui papéis (ESO, ALB, AKS, deploy) sem que o apply possa se dar Owner, User Access Administrator, Contributor ou RBAC Administrator; sintaxe do exemplo oficial "Constrain roles" (verificado em 2026-10-11) | User Access Administrator sem condição |
+| 13 | `Role Based Access Control Administrator` do apply com condição ABAC: só pode atribuir ou remover os 10 papéis de `modules/role-ids` | o lab atribui papéis (ESO, ALB, AKS, deploy) sem que o apply possa se dar Owner, User Access Administrator, Contributor ou RBAC Administrator; sintaxe do exemplo oficial "Constrain roles" (verificado em 2026-10-11) | User Access Administrator sem condição |
 | 14 | Papéis do plan: Reader, `Azure Kubernetes Service Cluster User Role`, `Key Vault Secrets User` e `App Configuration Data Reader` em `tx02v2-lab`; `Storage Blob Data Reader` no container; papel personalizado só com `Microsoft.AppConfiguration/configurationStores/ListKeys/action` | o refresh do azurerm 5.9.0 chama `ListClusterUserCredentials` (AKS), `GetSecret` (o valor do segredo), `GetKeyValue` (chaves) e `ListKeys` (store); um erro em qualquer um derruba o plan; as chaves de acesso são inúteis (autenticação local desligada); o plan roda com `-lock=false` | Contributor para o plan |
 | 15 | Plano de controle do AKS com identidade user-assigned (`tx02v2-lab-aks`) e identidade kubelet criada antes (`tx02v2-lab-kubelet`, `AcrPull` no ACR) | `Network Contributor` na subnet dos nós e `Managed Identity Operator` na identidade kubelet existem antes do cluster (sem corrida); a identidade kubelet fica no grupo do lab, dentro do escopo do apply | identidades system-assigned (papéis só depois da criação, kubelet no grupo de nós) |
 | 16 | Resource providers registrados no bootstrap (`resource_providers_to_register` do provider; o root do lab usa `resource_provider_registrations = "none"`) | o v1 falhou com `MissingSubscriptionRegistration`; registrar exige o escopo da assinatura; o recurso `azurerm_resource_provider_registration` falha se já registrado e desregistra no destroy | registro manual (v1) |
@@ -118,9 +118,10 @@ flowchart LR
 | 32 | Istio ambient no lab local | mTLS e autorização por identidade sem sidecar; roda no kind | sidecar (mais memória por pod); Linkerd |
 | 33 | GitOps com Argo CD lendo um servidor git do lab | um único dono do namespace do app; o push usa a chave do state, a leitura é anônima; o Argo CD fica só ClusterIP (no v1 ele e o Grafana estavam em LoadBalancers públicos) | Flux; apontar para o GitHub (exigiria credenciais e internet no caminho do deploy) |
 | 34 | Gatekeeper com políticas próprias testadas no `gator` | as regras do v1, em `deny`, com casos que provam aceitação e recusa; sem o add-on Azure Policy, que no v1 brigava com o Gatekeeper | gatekeeper-library inteira (mais regras do que o lab explica); Kyverno |
-| 35 | Alertmanager → `alert-sink` dentro do cluster | entrega de alerta provada sem credencial externa | Slack/e-mail reais |
+| 35 | Alertmanager → `alert-sink` dentro do cluster; receiver do Slack com o webhook num Secret opcional | entrega de alerta provada sem credencial externa; sem webhook, a mensagem no formato do Slack vai para o sink e a sonda confere o conteúdo | webhook do Slack nos values versionados (v1) |
 | 36 | Velero no emulador de objetos (API S3), backup por recursos, sem snapshots | o ensaio de restore roda em minutos e sem nuvem; o emulador fala S3, então o plugin AWS do Velero só existe no lab local (na Azure seria o plugin Azure no Blob Storage, `planejado`) | `pg_dump` sozinho; snapshots CSI; Azurite com o plugin Azure (não avaliado; o lab reaproveita o emulador do `tx01v2`) |
 | 37 | Perfis `core`/`observability`/`operations`/`full`; rede `10.251.0.0/24` e registry em `localhost:5002` | máquinas com pouca memória validam uma camada por vez; o CI roda `full`; rede e porta diferentes das do `tx01v2` (`10.250.0.0/24`, `5001`) evitam colisão entre os labs | um único perfil; os mesmos endereços em todos os pares |
+| 38 | Traces: o OpenTelemetry Collector como único destino OTLP; Tempo no lab local, Application Insights na nuvem (ingestão só com token do Entra ID: autenticação local desligada, extensão `azure_auth` com o Workload ID de `tx02v2-lab-otel` e `Monitoring Metrics Publisher` só nesse recurso) | o app e os Gateways falam só OTLP; trocar o backend não muda o app; a connection string vira endereço, não segredo; Tempo monolítico cabe no kind | connection string com autenticação local (a chave de instrumentação basta para gravar); SDK do Application Insights no app (prende o app à Azure); AAD Auth Proxy em sidecar |
 
 ### Desvio documentado: papéis do ALB Controller
 

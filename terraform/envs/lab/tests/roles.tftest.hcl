@@ -44,6 +44,15 @@ override_resource {
 }
 
 override_resource {
+  target = azurerm_user_assigned_identity.otel
+  values = {
+    id           = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ManagedIdentity/userAssignedIdentities/tx02v2-lab-otel"
+    principal_id = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+    client_id    = "99999999-9999-9999-9999-999999999999"
+  }
+}
+
+override_resource {
   target = azurerm_user_assigned_identity.kubelet
   values = {
     id           = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ManagedIdentity/userAssignedIdentities/tx02v2-lab-kubelet"
@@ -104,6 +113,7 @@ run "the_lab_assigns_exactly_the_abac_roles" {
       "eso-keyvault-secrets-user"                                          = "4633458b-17de-408a-b874-0445c86b69e6 cccccccc-cccc-cccc-cccc-cccccccccccc /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.KeyVault/vaults/tx02v2-lab-b602d594"
       "alb-agc-configuration-manager"                                      = "fbc52c3f-28ad-4303-a892-8a056630b8f1 ffffffff-ffff-ffff-ffff-ffffffffffff /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab"
       "alb-agc-subnet-network-contributor"                                 = "4d97b98b-1d4f-4787-a291-c67834d212e7 ffffffff-ffff-ffff-ffff-ffffffffffff /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.Network/virtualNetworks/tx02v2-lab-vnet/subnets/agc"
+      "otel-monitoring-metrics-publisher"                                  = "3913510d-42f4-4e42-8a64-420c390055eb bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.Insights/components/tx02v2-lab-traces"
       "cluster-admin-11111111-1111-1111-1111-111111111111"                 = "b1ff04bb-8a4e-4dc4-8eb5-8693973ce19b 11111111-1111-1111-1111-111111111111 /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ContainerService/managedClusters/tx02v2-lab"
       "cluster-admin-22222222-2222-2222-2222-222222222222"                 = "b1ff04bb-8a4e-4dc4-8eb5-8693973ce19b 22222222-2222-2222-2222-222222222222 /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ContainerService/managedClusters/tx02v2-lab"
       "app-deployer-acr-push-eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"         = "8311e382-0749-4cb8-b61a-304f252e45ec eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ContainerRegistry/registries/tx02v2labb602d594"
@@ -169,8 +179,8 @@ run "app_deployers_get_the_roles_of_the_deploy_identity" {
   }
 
   assert {
-    condition     = length(azurerm_role_assignment.lab) == 15
-    error_message = "Lab role assignments: kubelet 1, deploy identity 3, ESO 1, ALB 2, cluster admins 2 and 3 per app deployer (2)."
+    condition     = length(azurerm_role_assignment.lab) == 16
+    error_message = "Lab role assignments: kubelet 1, deploy identity 3, ESO 1, ALB 2, Collector 1, cluster admins 2 and 3 per app deployer (2)."
   }
 }
 
@@ -206,8 +216,8 @@ run "no_app_deployers_assign_nothing_extra" {
   }
 
   assert {
-    condition     = length(azurerm_role_assignment.lab) == 9
-    error_message = "Without app deployers the lab assigns 9 roles after the cluster exists (kubelet 1, deploy 3, ESO 1, ALB 2, admins 2)."
+    condition     = length(azurerm_role_assignment.lab) == 10
+    error_message = "Without app deployers the lab assigns 10 roles after the cluster exists (kubelet 1, deploy 3, ESO 1, ALB 2, Collector 1, admins 2)."
   }
 }
 
@@ -236,20 +246,70 @@ run "controller_identities_are_federated_with_the_cluster" {
   }
 
   assert {
-    condition     = [azurerm_user_assigned_identity.aks.name, azurerm_user_assigned_identity.kubelet.name, azurerm_user_assigned_identity.eso.name, azurerm_user_assigned_identity.alb.name] == ["tx02v2-lab-aks", "tx02v2-lab-kubelet", "tx02v2-lab-eso", "tx02v2-lab-alb"]
+    condition = (
+      azurerm_federated_identity_credential.otel.user_assigned_identity_id == azurerm_user_assigned_identity.otel.id &&
+      azurerm_federated_identity_credential.otel.subject == "system:serviceaccount:observability:opentelemetry-collector" &&
+      azurerm_federated_identity_credential.otel.issuer == module.aks.oidc_issuer_url &&
+      azurerm_federated_identity_credential.otel.audience == tolist(["api://AzureADTokenExchange"])
+    )
+    error_message = "tx02v2-lab-otel must trust only observability/opentelemetry-collector from the AKS OIDC issuer (contract v2)."
+  }
+
+  assert {
+    condition     = [azurerm_user_assigned_identity.aks.name, azurerm_user_assigned_identity.kubelet.name, azurerm_user_assigned_identity.eso.name, azurerm_user_assigned_identity.alb.name, azurerm_user_assigned_identity.otel.name] == ["tx02v2-lab-aks", "tx02v2-lab-kubelet", "tx02v2-lab-eso", "tx02v2-lab-alb", "tx02v2-lab-otel"]
     error_message = "Lab identity names follow the contract."
   }
 
   assert {
-    condition     = output.eso_identity_client_id == "55555555-5555-5555-5555-555555555555" && output.alb_identity_client_id == "66666666-6666-6666-6666-666666666666"
-    error_message = "platform/install.sh needs the client IDs of both controller identities."
+    condition     = output.eso_identity_client_id == "55555555-5555-5555-5555-555555555555" && output.alb_identity_client_id == "66666666-6666-6666-6666-666666666666" && output.otel_identity_client_id == "99999999-9999-9999-9999-999999999999"
+    error_message = "platform/install.sh needs the client IDs of the controller identities and of the Collector."
   }
 
   assert {
     condition = alltrue([
-      for t in [azurerm_user_assigned_identity.aks.tags, azurerm_user_assigned_identity.kubelet.tags, azurerm_user_assigned_identity.eso.tags, azurerm_user_assigned_identity.alb.tags] :
+      for t in [azurerm_user_assigned_identity.aks.tags, azurerm_user_assigned_identity.kubelet.tags, azurerm_user_assigned_identity.eso.tags, azurerm_user_assigned_identity.alb.tags, azurerm_user_assigned_identity.otel.tags] :
       t == tomap({ Project = "tx02v2", Environment = "lab", ManagedBy = "terraform", Repository = "maringelix/tx02v2" })
     ])
     error_message = "Lab identities carry the contract tags."
+  }
+}
+
+# Contract v2: the traces of the app go to an Application Insights resource that accepts only
+# Microsoft Entra ID ingestion (the Collector's Workload ID token), with capped daily ingestion.
+run "traces_accept_only_entra_id_ingestion" {
+  command = apply
+
+  assert {
+    condition = (
+      azurerm_application_insights.traces.name == "tx02v2-lab-traces" &&
+      azurerm_application_insights.traces.local_authentication_enabled == false &&
+      azurerm_application_insights.traces.workspace_id == azurerm_log_analytics_workspace.traces.id &&
+      azurerm_application_insights.traces.daily_data_cap_in_gb == 0.5
+    )
+    error_message = "Application Insights tx02v2-lab-traces: workspace-based, local authentication off, 0.5 GB per day by default."
+  }
+
+  assert {
+    condition = (
+      azurerm_log_analytics_workspace.traces.name == "tx02v2-lab-traces" &&
+      azurerm_log_analytics_workspace.traces.local_authentication_enabled == false &&
+      azurerm_log_analytics_workspace.traces.sku == "PerGB2018" &&
+      azurerm_log_analytics_workspace.traces.retention_in_days == 30 &&
+      azurerm_log_analytics_workspace.traces.daily_quota_gb == 0.5
+    )
+    error_message = "The traces workspace: PerGB2018, local authentication off, 30 days, 0.5 GB per day by default."
+  }
+
+  assert {
+    condition = alltrue([
+      for t in [azurerm_application_insights.traces.tags, azurerm_log_analytics_workspace.traces.tags] :
+      t == tomap({ Project = "tx02v2", Environment = "lab", ManagedBy = "terraform", Repository = "maringelix/tx02v2" })
+    ])
+    error_message = "The tracing resources carry the contract tags."
+  }
+
+  assert {
+    condition     = output.traces_application_insights_id == "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.Insights/components/tx02v2-lab-traces"
+    error_message = "platform/install.sh finds the traces resource by name (tx02v2-lab-traces)."
   }
 }

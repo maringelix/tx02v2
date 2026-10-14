@@ -1,0 +1,92 @@
+# open-telemetry/opentelemetry-collector (chart OTEL_COLLECTOR_CHART_VERSION of platform/versions.env),
+# namespace observability: the entry point of the traces of the lab in Azure, the same Collector as the
+# local lab (platform/local/values/otel-collector.yaml, same image digest). The dx02v2 API sends
+# OTLP/HTTP to opentelemetry-collector.observability.svc:4318 (docs/CONTRATO.md); the Collector adds the
+# Kubernetes attributes of the sender and writes the spans to the Application Insights tx02v2-lab-traces
+# with a Microsoft Entra token (extension azure_auth, Workload ID of tx02v2-lab-otel: the webhook injects
+# AZURE_CLIENT_ID, AZURE_TENANT_ID and AZURE_FEDERATED_TOKEN_FILE). Local authentication is off on that
+# resource, so the connection string (ConfigMap otel-collector-azure-monitor, written by
+# platform/install.sh) is an address, not a secret. install.sh sets the client-id annotation. Image
+# pinned by digest (verified 2026-10-14).
+mode: deployment
+replicaCount: 1
+image:
+  repository: otel/opentelemetry-collector-contrib
+  digest: sha256:39923a8e431bd1f57be82411999d389fcfe40857492e4365456d97a4c1f74be6
+serviceAccount:
+  # Federated credential subject of tx02v2-lab-otel (terraform/envs/lab/tracing.tf).
+  name: opentelemetry-collector
+podLabels:
+  azure.workload.identity/use: "true"
+presets:
+  kubernetesAttributes:
+    enabled: true
+extraEnvs:
+  - name: APPLICATIONINSIGHTS_CONNECTION_STRING
+    valueFrom:
+      configMapKeyRef:
+        name: otel-collector-azure-monitor
+        key: connection-string
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 256Mi
+ports:
+  jaeger-compact:
+    enabled: false
+  jaeger-thrift:
+    enabled: false
+  jaeger-grpc:
+    enabled: false
+  zipkin:
+    enabled: false
+config:
+  extensions:
+    azure_auth:
+      workload_identity:
+        client_id: ${env:AZURE_CLIENT_ID}
+        tenant_id: ${env:AZURE_TENANT_ID}
+        federated_token_file: ${env:AZURE_FEDERATED_TOKEN_FILE}
+      scopes:
+        - https://monitor.azure.com/.default
+  receivers:
+    jaeger: null
+    zipkin: null
+    prometheus: null
+  processors:
+    resource/lab:
+      attributes:
+        - key: cloud.provider
+          value: azure
+          action: upsert
+        - key: k8s.cluster.name
+          value: tx02v2-lab
+          action: upsert
+  exporters:
+    debug: null
+    azure_monitor:
+      connection_string: ${env:APPLICATIONINSIGHTS_CONNECTION_STRING}
+      auth:
+        authenticator: azure_auth
+  service:
+    extensions: [health_check, azure_auth]
+    pipelines:
+      logs: null
+      metrics: null
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, resource/lab, batch]
+        exporters: [azure_monitor]

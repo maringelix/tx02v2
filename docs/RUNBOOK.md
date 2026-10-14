@@ -153,16 +153,22 @@ Dispare `platform` com `action=install` e aprove o environment `lab`. Ele precis
 `tx02v2-gha-apply` em `LAB_CLUSTER_ADMIN_PRINCIPAL_IDS` e de um range que inclua os runners. O
 `platform/install.sh`:
 
-1. lê as chaves do contrato na App Configuration e os client IDs de `tx02v2-lab-alb` e
-   `tx02v2-lab-eso`, e renderiza `platform/manifests` antes de instalar qualquer coisa;
+1. lê as chaves do contrato na App Configuration, os client IDs de `tx02v2-lab-alb`,
+   `tx02v2-lab-eso` e `tx02v2-lab-otel` e a connection string de `tx02v2-lab-traces`, e renderiza
+   `platform/manifests` antes de instalar qualquer coisa;
 2. gera um kubeconfig temporário (`az aks get-credentials` + `kubelogin convert-kubeconfig -l azurecli`);
 3. baixa o chart do ALB Controller 1.12.2, recusa o arquivo se o SHA256 diferir de
    `platform/versions.env`, instala-o em `azure-alb-system` e confere os digests das imagens que os
    nós baixaram;
 4. espera a GatewayClass `azure-alb-external` ficar `Accepted`;
 5. instala o External Secrets Operator 2.12.0 com as anotações do Workload ID;
-6. aplica namespace, Role, RoleBinding e ClusterSecretStore e espera o `azure-key-vault` ficar `Ready`
-   (o ESO alcançou o Key Vault).
+6. aplica os namespaces `dx02v2` e `observability`, Role, RoleBinding e ClusterSecretStore;
+7. instala o OpenTelemetry Collector (contrato v2) em `observability`, com o client ID de
+   `tx02v2-lab-otel` e a connection string do Application Insights `tx02v2-lab-traces` num ConfigMap,
+   e espera o `azure-key-vault` ficar `Ready` (o ESO alcançou o Key Vault).
+
+Ao atualizar um lab criado antes do contrato v2: o papel `Monitoring Metrics Publisher` entrou na
+condição ABAC de `tx02v2-gha-apply`, então aplique o bootstrap de novo (seção 2) antes do apply.
 
 Localmente (seu object ID em `cluster_admin_principal_ids`, seu IP nos ranges e um papel de leitura na
 App Configuration, como o Data Owner da seção 4):
@@ -202,6 +208,11 @@ curl -fsS "http://<FQDN_DO_FRONTEND>/api/info"             # api
 kubectl -n dx02v2 get externalsecrets                      # SecretSynced
 kubectl -n dx02v2 get webapplicationfirewallpolicy         # com WAF: Accepted
 ```
+
+Traces (contrato v2), esperado e não verificado: depois de algumas requisições, o Application Insights
+`tx02v2-lab-traces` mostra o serviço `dx02v2-api` (Transaction search ou o mapa da aplicação). Nada em
+alguns minutos: `kubectl -n observability logs deployment/opentelemetry-collector` (erro 401/403 do
+exporter `azure_monitor`: papel ou credencial federada de `tx02v2-lab-otel`).
 
 Esperado, não verificado: com o WAF em Prevention, uma requisição com padrão de SQL injection recebe
 403 do AGC (`curl -s -o /dev/null -w '%{http_code}\n' "http://<FQDN_DO_FRONTEND>/api/info?id=1%27%20OR%20%271%27=%271"`).

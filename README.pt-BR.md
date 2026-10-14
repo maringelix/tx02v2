@@ -34,12 +34,12 @@ A família do lab (v2):
 | Lint e scan de segurança da IaC (tflint + ruleset azurerm, trivy HIGH/CRITICAL, simples e com as entradas de exemplo) | `verificado no CI` | `make static` (`tflint`, `trivy-config`, `trivy-config-tfvars`) |
 | Workflows, scripts, manifests da plataforma e values do Helm (actionlint, shellcheck, kubeconform, helm template com o SHA256 do chart) | `verificado no CI` | `make static` (`actionlint`, `shellcheck`, `kubeconform`, `helm-template`) |
 | Scan de segredos e políticas do repositório (sem identificadores reais nem GUIDs, actions fixadas, tags do contrato em todo recurso que aceita tags, regressões do v1) | `verificado no CI` | `make static` (`gitleaks`, `policy-*`, `repo-structure`, `version-consistency`) |
-| Contrato v1 com o dx02v2 (15 chaves da App Configuration, namespace, RBAC do deployer, ClusterSecretStore) | `verificado no CI` | `make static` (`contract-appconfig`, `contract-platform`); [docs/CONTRATO.md](docs/CONTRATO.md) |
-| Testes unitários do Terraform com provider azurerm mockado (sujeitos OIDC, conta do state, lista ABAC = papéis do lab, budget, AKS, PostgreSQL, Key Vault, ACR, AGC + WAF, chaves do contrato, atribuições de papel, validações negativas; 74 casos) | `verificado no CI` | `make test`; job `test` do CI |
+| Contrato v2 com o dx02v2 (15 chaves da App Configuration, namespaces `dx02v2` e `observability`, RBAC do deployer, ClusterSecretStore, endpoint OTLP do Collector) | `verificado no CI` | `make static` (`contract-appconfig`, `contract-platform`); [docs/CONTRATO.md](docs/CONTRATO.md) |
+| Testes unitários do Terraform com provider azurerm mockado (sujeitos OIDC, conta do state, lista ABAC = papéis do lab, budget, AKS, PostgreSQL, Key Vault, ACR, AGC + WAF, chaves do contrato, atribuições de papel, Application Insights só com ingestão por Entra ID, validações negativas; 75 casos) | `verificado no CI` | `make test`; job `test` do CI |
 | Bootstrap (resource providers, conta do state, grupo do lab, identidades OIDC do GitHub, budget) | `não executado em nuvem (v2)` | `terraform/bootstrap`, `docs/RUNBOOK.md` |
 | Apply do lab (VNet, AKS 1.36, PostgreSQL 17, Key Vault, ACR, AGC + WAF, contrato na App Configuration) | `não executado em nuvem (v2)` | `.github/workflows/terraform-apply.yml` |
 | Plan em pull requests | `não executado em nuvem (v2)` | `.github/workflows/terraform-plan.yml` |
-| Camada de plataforma (ALB Controller 1.12.2, External Secrets Operator 2.12.0) | `não executado em nuvem (v2)` | `.github/workflows/platform.yml`, `platform/install.sh` |
+| Camada de plataforma (ALB Controller 1.12.2, External Secrets Operator 2.12.0, OpenTelemetry Collector 0.162.0 enviando os traces do app ao Application Insights com Workload ID) | `não executado em nuvem (v2)` | `.github/workflows/platform.yml`, `platform/install.sh`; os charts são renderizados pelo `helm-template` |
 | Destroy + checagem de sobras | `não executado em nuvem (v2)` | `.github/workflows/terraform-destroy.yml`, `scripts/leftovers.sh` |
 | HTTPS no listener do Application Gateway for Containers | `planejado` | fora do contrato v1 (`docs/CONTRATO.md`) |
 | Configurações do repositório como código (ruleset, environment `lab`) | `verificado localmente` | `scripts/repo-guardrails.sh` aplicado; conferido com `gh api` em 2026-10-14 (`docs/PUBLICACAO.md`) |
@@ -48,13 +48,14 @@ A família do lab (v2):
 | Service mesh: Istio 1.31 ambient, mTLS `STRICT`, `AuthorizationPolicy` por identidade | `verificado no CI` | `make e2e` (`platform/local/check.sh`: sondas permitida, de outra identidade e em texto puro) |
 | Gateway API no Istio atrás do load balancer emulado, HTTPS com cert-manager (CA do lab), HTTP → HTTPS | `verificado no CI` | `make e2e` |
 | External Secrets (ClusterSecretStore `local-secrets`), metrics-server | `verificado no CI` | `make e2e` |
-| Observabilidade: Prometheus, Alertmanager (alerta sintético entregue), Grafana (ClusterIP), Loki + Alloy | `verificado no CI` | `make e2e` |
+| Observabilidade: Prometheus, Alertmanager (alerta sintético entregue, também como mensagem do Slack), Grafana (ClusterIP), Loki + Alloy | `verificado no CI` | `make e2e` |
+| Traces com OpenTelemetry: Collector → Tempo, spans dos Gateways do Istio (W3C trace context), spanmetrics com exemplars, Grafana ligando logs, métricas e traces | `verificado no CI` | `make e2e` (`check_tracing`) |
 | GitOps com Argo CD 3.5 (commit → sync → self-heal a partir do servidor git do lab) | `verificado no CI` | `make e2e` |
 | Policy as code no cluster: Gatekeeper 3.23 em `deny` (registries permitidos, imagens fixadas, recursos, probes, labels, NodePort) | `verificado no CI` | `make e2e` |
 | Scan dentro do cluster: Trivy Operator (relatórios de vulnerabilidade e de configuração) | `verificado no CI` | `make e2e` |
 | Ensaio de backup e restore: Velero no emulador de objetos (namespace apagado e restaurado com os dados) | `verificado no CI` | `make e2e` |
-| Chaos engineering com hipótese: pod-kill do Chaos Mesh, disponibilidade medida | `verificado no CI` | `make e2e` |
-| Os mesmos add-ons no AKS | `planejado` | o lab local mostra o alvo; a camada de plataforma em nuvem instala só o ALB Controller + ESO |
+| Chaos engineering com hipóteses: pod kill, 100 ms de latência de rede, stress de CPU e memória (Chaos Mesh); disponibilidade, latência e reinícios medidos | `verificado no CI` | `make e2e` |
+| Os mesmos add-ons no AKS | `planejado` | o lab local mostra o alvo; a camada de plataforma em nuvem instala só o ALB Controller, o ESO e o OpenTelemetry Collector |
 
 As linhas `verificado no CI` (`HARNESS_STRICT=1 make verify`) rodam em todo pull request, em todo
 push para a `main` e toda semana (jobs `static` e `test` do CI). Uma linha de nuvem só muda com uma
@@ -165,7 +166,7 @@ da assinatura) → issue `cloud_run_report`.
 |---|---|
 | [FORK.md](FORK.md) | fork do lab (em inglês): o que o GitHub não copia, o lab local, a sua conta de nuvem |
 | [docs/ARQUITETURA.md](docs/ARQUITETURA.md) | diagrama, ADRs, AWS ↔ Azure, v1 → v2 |
-| [docs/CONTRATO.md](docs/CONTRATO.md) | contrato tx02v2 ⇄ dx02v2 v1 (fonte da verdade) |
+| [docs/CONTRATO.md](docs/CONTRATO.md) | contrato tx02v2 ⇄ dx02v2 v2 (fonte da verdade) |
 | [docs/RUNBOOK.md](docs/RUNBOOK.md) | rodada completa na nuvem |
 | [docs/LAB_LOCAL.md](docs/LAB_LOCAL.md) | o lab local: o que é emulado, como rodar, sondas, limites |
 | [docs/CUSTOS.md](docs/CUSTOS.md) | estimativa de custo por componente, com e sem WAF |

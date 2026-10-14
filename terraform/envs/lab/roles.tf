@@ -46,6 +46,14 @@ locals {
         principal_id   = azurerm_user_assigned_identity.alb.principal_id
         principal_type = "ServicePrincipal"
       }
+      # OpenTelemetry Collector (contract v2): writes the traces of the app to this Application
+      # Insights resource only (Entra ID ingestion; local authentication is off, tracing.tf).
+      "otel-monitoring-metrics-publisher" = {
+        role           = "Monitoring Metrics Publisher"
+        scope          = azurerm_application_insights.traces.id
+        principal_id   = azurerm_user_assigned_identity.otel.principal_id
+        principal_type = "ServicePrincipal"
+      }
     },
     # dx02v2-gha-deploy, a managed identity.
     {

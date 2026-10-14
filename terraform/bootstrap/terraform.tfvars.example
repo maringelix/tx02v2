@@ -3,9 +3,12 @@
 # Required: the dedicated subscription (az account show --query id -o tsv).
 subscription_id = "00000000-0000-0000-0000-000000000000"
 
-location     = "eastus2"
-github_owner = "maringelix"
+location = "eastus2"
 
-# Required: who receives the cost alerts (Actual 50/80/100 %, Forecasted 100 %).
+# Required: your GitHub user, the owner of your forks of tx02v2 and dx02v2 (the identities trust only
+# their workflows). The placeholder is refused, so is the e-mail below.
+github_owner = "your-github-user"
+
+# Required: who receives the cost alerts (Actual 50/80/100 %, Forecasted 100 %). Use an address you read.
 budget_alert_emails   = ["you@example.com"]
 monthly_budget_amount = 25

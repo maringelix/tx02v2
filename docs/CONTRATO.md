@@ -40,7 +40,7 @@ serviços equivalentes da Azure.
 |---|---|
 | Região Azure | variável Terraform `location`, padrão `eastus2` |
 | Projeto / ambiente / prefixo | `tx02v2` / `lab` / `tx02v2-lab` |
-| Tags (todo recurso que aceita tags; o azurerm não tem tags padrão no provider) | `Project=tx02v2`, `Environment=lab`, `ManagedBy=terraform`, `Repository=maringelix/tx02v2` |
+| Tags (todo recurso que aceita tags; o azurerm não tem tags padrão no provider) | `Project=tx02v2`, `Environment=lab`, `ManagedBy=terraform`, `Repository=<owner>/tx02v2` |
 | Grupos de recursos | `tx02v2-bootstrap` (state, identidades de CI; do bootstrap), `tx02v2-lab` (recursos do lab; **criado pelo bootstrap**, preenchido pelo root do lab), grupo de nós do AKS `tx02v2-lab-nodes` |
 | Sufixo dos nomes globais | `suffix = substr(sha1(<subscription_id>), 0, 8)` (determinístico, sem random) |
 | Cluster AKS | `tx02v2-lab`, Kubernetes `1.36`, contas locais desligadas, Entra ID com Azure RBAC, OIDC issuer + workload identity, Azure CNI Overlay com dataplane Cilium (aplica NetworkPolicy) |
@@ -69,7 +69,7 @@ tráfego da Azure no lugar do Ingress:
 ## OIDC do GitHub
 
 Credenciais federadas com issuer `https://token.actions.githubusercontent.com`, audience
-`api://AzureADTokenExchange`, dono configurável (`github_owner`, padrão `maringelix`) e uma
+`api://AzureADTokenExchange`, dono configurável (`github_owner`, sem padrão: o dono do repositório ou do seu fork) e uma
 credencial por sujeito exato.
 
 | Identidade | Sujeitos |

@@ -54,6 +54,9 @@ identidades `tx02v2-gha-plan`, `tx02v2-gha-apply` e `dx02v2-gha-deploy` com as c
 e os papéis do contrato, e o budget mensal (padrão 25 na moeda de faturamento, alertas de 50, 80 e
 100 % do valor real e de 100 % do previsto).
 
+- `github_owner` não tem padrão: use o seu usuário do GitHub, o dono dos repositórios `tx02v2` e
+  `dx02v2` (ou dos seus forks). O placeholder do exemplo (`your-github-user`) e o e-mail
+  `you@example.com` são recusados.
 - O state do bootstrap fica **local** (`terraform.tfstate`, ignorado pelo git). Faça backup dele.
 - O registro de providers pode levar alguns minutos no primeiro apply.
 - **A armadilha do Owner**: Owner não tem *data actions*, e a conta do state não aceita chaves
@@ -80,6 +83,9 @@ Settings > Secrets and variables > Actions > **Variables**, como variáveis de r
 plan não roda num environment). Elas aparecem nos logs: não coloque nada privado. Os workflows
 conferem o formato no primeiro passo, mascaram nos logs os IDs de tenant, assinatura e client, o
 object ID do deploy e o sufixo, e trocam todo GUID por `<GUID>` nos resumos.
+
+O `FORK.md` (passo 7) grava os outputs `github_variables_tx02v2` e `github_variables_dx02v2` do
+bootstrap com `gh variable set -f`; as variáveis `LAB_*` que você escolhe vêm da tabela abaixo.
 
 ### tx02v2
 

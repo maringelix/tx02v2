@@ -52,6 +52,18 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- `LOCAL_SIZE=small` for the local platform (roadmap R1.8, the port of tx01v2):
+  `platform/local/values/small/<chart>.yaml` goes last in `helm_install`, with smaller memory limits
+  and `GOMEMLIMIT` below them, 2 h of retention in Prometheus and 1 h in Tempo, no cAdvisor, kubelet
+  probes or apiserver histogram series (and no default rules that read them), Grafana without unified
+  alerting, fewer Argo CD workers, one Trivy scan job at a time and a lower limit for the operator,
+  and the Gatekeeper audit every 5 minutes on the kinds the constraints match.
+  `scripts/local/kind-cluster.sh` appends `terraform/envs/local/kind-config-small.yaml` (`GOMEMLIMIT`
+  for the API server, the controller manager and etcd). The components stay the same. At the small
+  size the full platform with the app of dx02v2 passes in 7 GB (18 probes in about 15 minutes, 4.35
+  GiB of anonymous memory; CI job `e2e-platform-small` of dx02v2). The `helm-template-local` check
+  renders every chart with an overlay a second time and fails when the overlay changes an image or
+  names a chart that does not exist.
 - Local lab, "Observability 2.0" (ported from tx01v2; the last step of the v1 roadmap, never started
   there): Tempo 3.1.0 (grafana-community chart 3.1.0) and the OpenTelemetry Collector contrib 0.162.0
   (chart 0.176.0) in the observability layer; every Istio Gateway reports its spans (Telemetry

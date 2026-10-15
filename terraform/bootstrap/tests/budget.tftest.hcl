@@ -5,9 +5,12 @@ mock_provider "azurerm" {
 }
 
 variables {
-  github_owner        = "maringelix"
-  subscription_id     = "00000000-0000-0000-0000-000000000000"
-  budget_alert_emails = ["lab-alerts@example.org", "ops@example.org"]
+  github_owner         = "maringelix"
+  github_owner_id      = "1000000"
+  tx02v2_repository_id = "2000000"
+  dx02v2_repository_id = "3000000"
+  subscription_id      = "00000000-0000-0000-0000-000000000000"
+  budget_alert_emails  = ["lab-alerts@example.org", "ops@example.org"]
 }
 
 run "monthly_budget_with_four_alerts" {

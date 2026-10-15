@@ -9,6 +9,15 @@ location = "eastus2"
 # their workflows). The placeholder is refused, so is the e-mail below.
 github_owner = "your-github-user"
 
+# Required: the numeric GitHub IDs that the OIDC subject carries (scripts/repo-guardrails.sh prints
+# them for a repository):
+#   gh api users/<owner> --jq .id          -> github_owner_id
+#   gh api repos/<owner>/tx02v2 --jq .id   -> tx02v2_repository_id
+#   gh api repos/<owner>/dx02v2 --jq .id   -> dx02v2_repository_id
+github_owner_id      = "1000000"
+tx02v2_repository_id = "2000000"
+dx02v2_repository_id = "3000000"
+
 # Required: who receives the cost alerts (Actual 50/80/100 %, Forecasted 100 %). Use an address you read.
 budget_alert_emails   = ["you@example.com"]
 monthly_budget_amount = 25

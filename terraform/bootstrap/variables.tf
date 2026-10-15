@@ -34,6 +34,36 @@ variable "github_owner" {
   }
 }
 
+variable "github_owner_id" {
+  description = "Numeric GitHub ID of github_owner (gh api users/<owner> --jq .id; it works for organizations too). GitHub writes it, and the ID of the repository, into the OIDC subject of every repository created after 2026-07-15 (immutable subject claims). The federated credentials pin both, so a deleted and re-registered account name does not inherit the lab."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[1-9][0-9]{0,15}$", var.github_owner_id))
+    error_message = "The github_owner_id must be the numeric GitHub ID of the owner: gh api users/<owner> --jq .id"
+  }
+}
+
+variable "tx02v2_repository_id" {
+  description = "Numeric GitHub ID of your tx02v2 repository (gh api repos/<owner>/tx02v2 --jq .id)."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[1-9][0-9]{0,15}$", var.tx02v2_repository_id))
+    error_message = "The tx02v2_repository_id must be the numeric ID of the repository: gh api repos/<owner>/tx02v2 --jq .id"
+  }
+}
+
+variable "dx02v2_repository_id" {
+  description = "Numeric GitHub ID of your dx02v2 repository (gh api repos/<owner>/dx02v2 --jq .id)."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[1-9][0-9]{0,15}$", var.dx02v2_repository_id))
+    error_message = "The dx02v2_repository_id must be the numeric ID of the repository: gh api repos/<owner>/dx02v2 --jq .id"
+  }
+}
+
 variable "state_protection_lock" {
   description = "CanNotDelete lock on the state storage account (set false only for the final teardown)."
   type        = bool

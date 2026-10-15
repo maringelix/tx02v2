@@ -80,9 +80,16 @@ credencial por sujeito exato.
 
 | Identidade | Sujeitos |
 |---|---|
-| `tx02v2-gha-plan` | `repo:<owner>/tx02v2:pull_request`, `repo:<owner>/tx02v2:ref:refs/heads/main` |
-| `tx02v2-gha-apply` | `repo:<owner>/tx02v2:environment:lab` |
-| `dx02v2-gha-deploy` | `repo:<owner>/dx02v2:environment:lab` |
+| `tx02v2-gha-plan` | `repo:<owner>@<owner id>/tx02v2@<repo id>:pull_request`, `repo:<owner>@<owner id>/tx02v2@<repo id>:ref:refs/heads/main` |
+| `tx02v2-gha-apply` | `repo:<owner>@<owner id>/tx02v2@<repo id>:environment:lab` |
+| `dx02v2-gha-deploy` | `repo:<owner>@<owner id>/dx02v2@<repo id>:environment:lab` |
+
+O sujeito é o **imutável** do GitHub (repositórios criados depois de 2026-07-15 ou que aderiram): leva o
+ID numérico do dono e o do repositório (`github_owner_id`, `tx02v2_repository_id`,
+`dx02v2_repository_id`), então um nome de conta apagado e registrado de novo não herda o lab. O
+environment `lab` só implanta a partir de `main`. A identidade `tx02v2-gha-plan` só tem `Reader` no
+`tx02v2-lab` e a leitura do state: nenhum plano de dados (nenhum valor de segredo, nenhuma chave da App
+Configuration, nenhuma credencial do AKS), e por isso o plan roda com `-refresh=false`.
 
 Papéis Azure de `dx02v2-gha-deploy` (atribuídos pelo root do lab): `AcrPush` no registry;
 `Azure Kubernetes Service Cluster User Role` no cluster (para obter o kubeconfig);

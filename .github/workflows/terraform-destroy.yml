@@ -1,7 +1,9 @@
 # Destroys the lab. CLOUD-MUTATING: requires the typed confirmation "destroy tx02v2-lab" and the
-# `lab` environment approval. Order: platform/uninstall.sh (if the cluster exists) -> terraform
-# destroy -> scripts/leftovers.sh. Every step fails loudly; nothing is ignored. The bootstrap
-# (state, identities, budget, the empty tx02v2-lab resource group) stays. Not run in the cloud yet (v2).
+# `lab` environment approval. scripts/destroy.sh runs platform/uninstall.sh (if the cluster exists), goes
+# on to terraform destroy even when the uninstall fails and always ends with scripts/leftovers.sh,
+# which prints the exact purge commands of the vaults left in soft delete. Every step fails loudly;
+# nothing is ignored. The bootstrap (state, identities, budget, the empty tx02v2-lab resource group)
+# stays. Not run in the cloud yet (v2).
 name: terraform-destroy
 
 on:
@@ -10,6 +12,11 @@ on:
       confirm:
         description: 'Type exactly: destroy tx02v2-lab'
         required: true
+        type: string
+      force_unlock_id:
+        description: 'Only after an interrupted apply or destroy: the lock ID of the Terraform error message (docs/RUNBOOK.md, section 8)'
+        required: false
+        default: ''
         type: string
 
 permissions:
@@ -38,9 +45,10 @@ jobs:
       TF_VAR_location: ${{ vars.LAB_LOCATION }}
       TF_VAR_github_owner: ${{ github.repository_owner }}
       TF_VAR_deploy_principal_id: ${{ vars.LAB_DEPLOY_PRINCIPAL_ID }}
-      TF_VAR_cluster_admin_principal_ids: ${{ vars.LAB_CLUSTER_ADMIN_PRINCIPAL_IDS }}
-      TF_VAR_app_deployer_principal_ids: ${{ vars.LAB_APP_DEPLOYER_PRINCIPAL_IDS || '[]' }}
-      TF_VAR_api_server_authorized_ip_ranges: ${{ vars.LAB_API_SERVER_AUTHORIZED_IP_RANGES }}
+      # Secrets, not variables: the logs of a public repository are public, and a secret is masked.
+      TF_VAR_cluster_admin_principal_ids: ${{ secrets.LAB_CLUSTER_ADMIN_PRINCIPAL_IDS }}
+      TF_VAR_app_deployer_principal_ids: ${{ secrets.LAB_APP_DEPLOYER_PRINCIPAL_IDS || '[]' }}
+      TF_VAR_api_server_authorized_ip_ranges: ${{ secrets.LAB_API_SERVER_AUTHORIZED_IP_RANGES }}
       TF_VAR_allow_api_server_from_anywhere: ${{ vars.LAB_ALLOW_API_SERVER_FROM_ANYWHERE || 'false' }}
       TF_VAR_enable_waf: ${{ vars.LAB_ENABLE_WAF || 'true' }}
     steps:
@@ -68,7 +76,7 @@ jobs:
           done
           if ((${#problems[@]} > 0)); then
             printf '::error::Repository variable problem: %s\n' "${problems[@]}"
-            echo "::error::Settings > Secrets and variables > Actions > Variables; names and values in docs/RUNBOOK.md (section 'Variáveis do GitHub')."
+            echo "::error::Settings > Secrets and variables > Actions (the lists of people and addresses are secrets, the rest variables); names and values in docs/RUNBOOK.md (section 'Variáveis do GitHub')."
             exit 1
           fi
           # Identifiers never reach the logs of a public repository.
@@ -76,6 +84,22 @@ jobs:
             echo "::add-mask::${!v}"
           done
           echo "::add-mask::$(printf '%s' "$ARM_SUBSCRIPTION_ID" | sha1sum | cut -c1-8)"
+
+      - name: Mask the addresses and the people of the operator in the logs
+        env:
+          API_RANGES: ${{ secrets.LAB_API_SERVER_AUTHORIZED_IP_RANGES }}
+          ADMIN_IDS: ${{ secrets.LAB_CLUSTER_ADMIN_PRINCIPAL_IDS }}
+          DEPLOYER_IDS: ${{ secrets.LAB_APP_DEPLOYER_PRINCIPAL_IDS }}
+        run: |
+          for list in "$API_RANGES" "$ADMIN_IDS" "$DEPLOYER_IDS"; do
+            [[ -n "$list" ]] || continue
+            items="$(jq -er '.[]' <<<"$list")"
+            while IFS= read -r item; do
+              [[ -n "$item" ]] || continue
+              echo "::add-mask::$item"
+              echo "::add-mask::${item%%/*}"
+            done <<<"$items"
+          done
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -92,27 +116,26 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Remove the platform layer while the cluster exists
+      # The script keeps going after a failed uninstall (the order and the fallbacks are tested
+      # offline: check destroy-flow). The leftover check below runs whatever happens here.
+      - name: Destroy the platform layer and the lab
+        env:
+          FORCE_UNLOCK_ID: ${{ inputs.force_unlock_id }}
         run: |
-          clusters="$(az aks list --resource-group tx02v2-lab --query "[?name=='tx02v2-lab'] | length(@)" --output tsv)"
-          if [[ "$clusters" == 1 ]]; then
-            bash platform/uninstall.sh
-          else
-            echo "cluster tx02v2-lab not found: nothing to uninstall"
+          args=()
+          if [[ -n "$FORCE_UNLOCK_ID" ]]; then
+            args=(--force-unlock "$FORCE_UNLOCK_ID")
           fi
-
-      - name: terraform init
-        run: terraform -chdir=terraform/envs/lab init -input=false -lockfile=readonly -backend-config="storage_account_name=$TF_STATE_STORAGE_ACCOUNT"
-
-      - name: terraform destroy
-        run: terraform -chdir=terraform/envs/lab destroy -auto-approve -input=false -no-color
+          bash scripts/destroy.sh --subscription "$ARM_SUBSCRIPTION_ID" "${args[@]}"
 
       # A fresh login: the Azure CLI tokens of the first login may expire during a long destroy.
-      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+      - if: always()
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ vars.AZURE_APPLY_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Leftover check (must find nothing billable)
-        run: bash scripts/leftovers.sh --retry-for 900
+        if: always()
+        run: bash scripts/leftovers.sh --subscription "$ARM_SUBSCRIPTION_ID" --retry-for 900

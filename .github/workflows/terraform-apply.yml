@@ -34,9 +34,10 @@ jobs:
       TF_VAR_location: ${{ vars.LAB_LOCATION }}
       TF_VAR_github_owner: ${{ github.repository_owner }}
       TF_VAR_deploy_principal_id: ${{ vars.LAB_DEPLOY_PRINCIPAL_ID }}
-      TF_VAR_cluster_admin_principal_ids: ${{ vars.LAB_CLUSTER_ADMIN_PRINCIPAL_IDS }}
-      TF_VAR_app_deployer_principal_ids: ${{ vars.LAB_APP_DEPLOYER_PRINCIPAL_IDS || '[]' }}
-      TF_VAR_api_server_authorized_ip_ranges: ${{ vars.LAB_API_SERVER_AUTHORIZED_IP_RANGES }}
+      # Secrets, not variables: the logs of a public repository are public, and a secret is masked.
+      TF_VAR_cluster_admin_principal_ids: ${{ secrets.LAB_CLUSTER_ADMIN_PRINCIPAL_IDS }}
+      TF_VAR_app_deployer_principal_ids: ${{ secrets.LAB_APP_DEPLOYER_PRINCIPAL_IDS || '[]' }}
+      TF_VAR_api_server_authorized_ip_ranges: ${{ secrets.LAB_API_SERVER_AUTHORIZED_IP_RANGES }}
       TF_VAR_allow_api_server_from_anywhere: ${{ vars.LAB_ALLOW_API_SERVER_FROM_ANYWHERE || 'false' }}
       TF_VAR_enable_waf: ${{ vars.LAB_ENABLE_WAF || 'true' }}
     steps:
@@ -58,7 +59,7 @@ jobs:
           done
           if ((${#problems[@]} > 0)); then
             printf '::error::Repository variable problem: %s\n' "${problems[@]}"
-            echo "::error::Settings > Secrets and variables > Actions > Variables; names and values in docs/RUNBOOK.md (section 'Variáveis do GitHub')."
+            echo "::error::Settings > Secrets and variables > Actions (the lists of people and addresses are secrets, the rest variables); names and values in docs/RUNBOOK.md (section 'Variáveis do GitHub')."
             exit 1
           fi
           # Identifiers never reach the logs of a public repository.
@@ -66,6 +67,22 @@ jobs:
             echo "::add-mask::${!v}"
           done
           echo "::add-mask::$(printf '%s' "$ARM_SUBSCRIPTION_ID" | sha1sum | cut -c1-8)"
+
+      - name: Mask the addresses and the people of the operator in the logs
+        env:
+          API_RANGES: ${{ secrets.LAB_API_SERVER_AUTHORIZED_IP_RANGES }}
+          ADMIN_IDS: ${{ secrets.LAB_CLUSTER_ADMIN_PRINCIPAL_IDS }}
+          DEPLOYER_IDS: ${{ secrets.LAB_APP_DEPLOYER_PRINCIPAL_IDS }}
+        run: |
+          for list in "$API_RANGES" "$ADMIN_IDS" "$DEPLOYER_IDS"; do
+            [[ -n "$list" ]] || continue
+            items="$(jq -er '.[]' <<<"$list")"
+            while IFS= read -r item; do
+              [[ -n "$item" ]] || continue
+              echo "::add-mask::$item"
+              echo "::add-mask::${item%%/*}"
+            done <<<"$items"
+          done
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -85,14 +102,22 @@ jobs:
       - name: terraform apply
         run: terraform -chdir=terraform/envs/lab apply -input=false -no-color tfplan
 
-      - name: Outputs to the job summary (identifiers replaced)
+      - name: Outputs to the job summary (identifiers and addresses replaced)
+        env:
+          API_RANGES: ${{ secrets.LAB_API_SERVER_AUTHORIZED_IP_RANGES }}
         run: |
           suffix="$(printf '%s' "$ARM_SUBSCRIPTION_ID" | sha1sum | cut -c1-8)"
+          text="$(terraform -chdir=terraform/envs/lab output -no-color |
+            sed -E -e 's/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<GUID>/g' -e "s/$suffix/<SUFFIX>/g")"
+          # The job summary is not covered by the masks of the log.
+          while IFS= read -r cidr; do
+            text="${text//"$cidr"/<CIDR>}"
+            text="${text//"${cidr%%/*}"/<IP>}"
+          done < <(jq -er '.[]' <<<"$API_RANGES")
           {
             echo "## terraform apply: terraform/envs/lab"
             echo '```'
-            terraform -chdir=terraform/envs/lab output -no-color |
-              sed -E -e 's/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<GUID>/g' -e "s/$suffix/<SUFFIX>/g"
+            printf '%s\n' "$text"
             echo '```'
             echo "Next: dispatch the platform workflow (action=install), then the deploy-azure workflow of dx02v2. Destroy when done."
           } >> "$GITHUB_STEP_SUMMARY"

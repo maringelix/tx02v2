@@ -177,12 +177,12 @@ por até ~7 meses com a justificativa atualizada; se não, corrija o código e r
 
 ### 5.10 Papéis do plan depois de um bump do azurerm
 
-O plan só funciona se o refresh do provider não pedir nada além dos papéis de `tx02v2-gha-plan`
-(`docs/ARQUITETURA.md`, ADR 14). Numa versão nova do azurerm, procure no código do provider o que o
-`Read` de `azurerm_kubernetes_cluster`, `azurerm_key_vault`, `azurerm_key_vault_secret`,
-`azurerm_app_configuration` e `azurerm_app_configuration_key` chama. Se aparecer uma chamada nova,
-ajuste `plan_roles` em `terraform/bootstrap/roles.tf` com o papel de menor privilégio e o teste
-`plan_identity_is_read_only`.
+O plan roda com `-refresh=false` e `tx02v2-gha-plan` só tem `Reader` no lab e a leitura do state
+(`docs/ARQUITETURA.md`, ADR 14): ele não chama plano de dados. Numa versão nova do azurerm, confira só
+que o `plan` sem refresh continua não lendo nada além do state e dos data sources de gerenciamento
+(`azurerm_client_config`, `azurerm_resource_group`). Se um data source novo pedir um papel, o papel
+deve ser de gerenciamento (`Reader`); nunca devolva `Key Vault Secrets User` ao plan. O teste
+`plan_identity_is_read_only` recusa os papéis de dados.
 
 ### 5.11 Preços
 

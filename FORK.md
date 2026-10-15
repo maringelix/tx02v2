@@ -129,7 +129,13 @@ Then, from the root of your `tx02v2` clone:
    `terraform/bootstrap/terraform.tfvars.example` to `terraform.tfvars` (git-ignored) and set
    `subscription_id`, `github_owner` (your GitHub user) and `budget_alert_emails` (an address you
    read). `github_owner` and the e-mail have no usable default: the placeholders are refused, so the
-   identities can only trust your forks.
+   identities can only trust your forks. Set the three numeric GitHub IDs too (`github_owner_id`,
+   `tx02v2_repository_id`, `dx02v2_repository_id`): GitHub writes them into the OIDC subject of every
+   repository created after 2026-07-15 (your fork), and the federated credentials trust that exact
+   subject. `scripts/repo-guardrails.sh` prints them, or: `gh api users/<you> --jq .id`,
+   `gh api repos/<you>/tx02v2 --jq .id`, `gh api repos/<you>/dx02v2 --jq .id`. A repository that
+   predates 2026-07-15 must opt in to immutable subject claims first (Settings > Actions > General >
+   OpenID Connect).
 
    ```bash
    export PATH="$PWD/.tools/bin:$PATH"   # terraform, kubectl and kubelogin from make tools
@@ -149,10 +155,19 @@ Then, from the root of your `tx02v2` clone:
    gh variable set -f /tmp/dx02v2.env -R <you>/dx02v2
    ```
 
-   Then add the ones you choose (`LAB_API_SERVER_AUTHORIZED_IP_RANGES`,
-   `LAB_ALLOW_API_SERVER_FROM_ANYWHERE`, and your own object ID in `LAB_CLUSTER_ADMIN_PRINCIPAL_IDS`):
-   [docs/RUNBOOK.md](docs/RUNBOOK.md), section 3. Variables are not secret: never put a credential in
-   one.
+   The lists that name the people and the address that operate the lab are **secrets**, not
+   variables (the logs of a public repository are public, and a secret is masked):
+
+   ```bash
+   terraform output -json github_secrets_tx02v2 | jq -r 'to_entries[] | "\(.key)=\(.value)"' >/tmp/tx02v2.secrets.env
+   gh secret set -f /tmp/tx02v2.secrets.env -R <you>/tx02v2
+   gh secret set LAB_API_SERVER_AUTHORIZED_IP_RANGES -R <you>/tx02v2   # a JSON list, e.g. ["0.0.0.0/0"]
+   ```
+
+   Then add your own object ID to `LAB_CLUSTER_ADMIN_PRINCIPAL_IDS` (the secret above holds only the
+   apply identity) and the variables you choose (`LAB_ALLOW_API_SERVER_FROM_ANYWHERE`):
+   [docs/RUNBOOK.md](docs/RUNBOOK.md), section 3. Variables are not secret: never put a credential or
+   your address in one.
 3. **Run**: from the Actions tab, `terraform-plan`, `terraform-apply` and `platform` (each one waits
    for your approval of the `lab` environment), the app deploy from your `dx02v2`, the smoke test,
    then `terraform-destroy`, which ends with the leftover check: [docs/RUNBOOK.md](docs/RUNBOOK.md),

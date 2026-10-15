@@ -224,7 +224,9 @@ Dispare `terraform-destroy` com a confirmação `destroy tx02v2-lab` e aprove o 
 roda `platform/uninstall.sh` (se o cluster existir: apaga HTTPRoutes, Gateways, políticas do ALB e
 Services `LoadBalancer` e desinstala os releases), `terraform destroy`, faz login de novo e roda
 `scripts/leftovers.sh --retry-for 900`. Qualquer erro para o job: leia o log, corrija e rode de novo.
-Localmente:
+Como apaga tudo isso no cluster que alcança, o `platform/uninstall.sh` só age no cluster `tx02v2-lab`
+do grupo `tx02v2-lab` com a tag `Project=tx02v2`; nenhuma variável de ambiente (`RESOURCE_GROUP`,
+`CLUSTER_NAME`) muda o alvo, e o kubeconfig dele é temporário. Localmente:
 
 ```bash
 platform/uninstall.sh

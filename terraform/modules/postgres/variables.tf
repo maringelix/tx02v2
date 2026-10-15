@@ -1,7 +1,7 @@
 # Inputs are validated by the calling root (terraform/envs/lab); this module trusts them.
 
 variable "name" {
-  description = "Name prefix of the lab (tx02v2-lab). The server becomes <name>-postgres."
+  description = "Name prefix of the server: the lab name plus the subscription suffix (tx02v2-lab-<suffix>), because the server name is a global DNS name. The server becomes <name>-postgres."
   type        = string
 }
 

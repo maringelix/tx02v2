@@ -34,6 +34,10 @@ locals {
   appconfig_name      = "${local.name}-${local.suffix}"
   acr_name            = "${replace(local.name, "-", "")}${local.suffix}"
   node_resource_group = "${local.name}-nodes"
+
+  # The PostgreSQL server name is a global DNS name (<name>.postgres.database.azure.com): without the
+  # suffix, the lab of one fork would block the apply of every other one. The module appends -postgres.
+  postgres_name_prefix = "${local.name}-${local.suffix}"
 }
 
 check "location_matches_resource_group" {
@@ -101,7 +105,7 @@ module "aks" {
 module "postgres" {
   source = "../../modules/postgres"
 
-  name                   = local.name
+  name                   = local.postgres_name_prefix
   location               = var.location
   resource_group_name    = data.azurerm_resource_group.lab.name
   delegated_subnet_id    = module.network.postgres_subnet_id

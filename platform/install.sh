@@ -19,7 +19,8 @@
 #                               app_deployer_principal_ids), default []
 # Every Azure token is acquired in the first minutes (the GitHub OIDC assertion behind azure/login
 # expires after 5-10 minutes; the Azure CLI then reuses the tokens it holds). Re-running it upgrades
-# in place.
+# in place. It installs only on the contract cluster tx02v2-lab, and only when that cluster carries
+# the tag Project=tx02v2; the kubeconfig is a temporary file (~/.kube/config stays as it was).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -213,6 +214,9 @@ main() {
   load_contract
   rg="$(contract resource-group)"
   cluster="$(contract cluster-name)"
+  [[ "$rg" == "$LAB_NAME" && "$cluster" == "$LAB_NAME" ]] ||
+    die "contract keys resource-group and cluster-name are '$rg' and '$cluster', not $LAB_NAME"
+  require_lab_cluster "$rg" "$cluster"
   vault="$(contract keyvault/uri)"
   deployer="$(contract deploy/principal-id)"
   store="$(contract eso/cluster-secret-store)"

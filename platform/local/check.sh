@@ -1221,6 +1221,7 @@ EOF
 
 main() {
   require_cmd kubectl docker curl terraform helm git ssh
+  require_lab_context
   kubectl version >/dev/null 2>&1 || die "the lab cluster is not reachable (run: scripts/local-lab.sh up)"
   WORK_DIR="$(mktemp -d)"
   trap cleanup EXIT

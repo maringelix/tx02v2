@@ -1,4 +1,4 @@
-# The three GitHub Actions identities of contract v1 (docs/CONTRATO.md): user-assigned managed
+# The three GitHub Actions identities of the contract (docs/CONTRATO.md): user-assigned managed
 # identities (no app registration, no client secret, no Entra directory permission needed) with
 # one federated credential per exact subject. Issuer and audience are the GitHub defaults.
 # Azure rejects concurrent writes of federated credentials under the same identity, so the two

@@ -112,6 +112,7 @@ an account (status above: the end-to-end round is `verified in CI`):
 ```bash
 make e2e            # up + every probe + down: about 30-40 minutes on tx01v2, 8 GB of Docker memory for "full"
 make local-up       # or keep it running (LOCAL_PROFILE=core|observability|operations|full)
+LOCAL_SIZE=small make local-up   # the same platform with smaller limits, for 7 GB of Docker memory
 make local-check    # probes against the running lab
 make local-down     # destroy + leftover check
 ```

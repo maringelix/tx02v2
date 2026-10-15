@@ -1,4 +1,4 @@
-# RBAC of the dx02v2 deployer (contract v1). With Azure RBAC for Kubernetes authorization, a
+# RBAC of the dx02v2 deployer (docs/CONTRATO.md). With Azure RBAC for Kubernetes authorization, a
 # request no Azure role grants falls back to Kubernetes RBAC: dx02v2-gha-deploy has no Azure data
 # role on the cluster, so this binding (subject User = its object ID, plus any
 # app_deployer_principal_ids) is its only access, and only in the dx02v2 namespace.

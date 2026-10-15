@@ -1,4 +1,4 @@
-# GitHub OIDC identities and their federated credentials (docs/CONTRATO.md, contract v1).
+# GitHub OIDC identities and their federated credentials (docs/CONTRATO.md).
 
 mock_provider "azurerm" {
   source = "../tests/mocks"

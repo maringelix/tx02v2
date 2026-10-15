@@ -1,5 +1,5 @@
 # Lab root: composes the modules for tx02v2-lab inside the resource group created by
-# terraform/bootstrap. Names, tags and published values follow docs/CONTRATO.md (contract v1 with
+# terraform/bootstrap. Names, tags and published values follow docs/CONTRATO.md (the contract with
 # dx02v2). Nothing here talks to the Kubernetes API: controllers and manifests are installed by
 # platform/install.sh. Every role assignment of the lab lives in roles.tf.
 

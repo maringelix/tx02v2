@@ -98,7 +98,7 @@ install_cert_manager() {
   kubectl wait --for=condition=Ready clusterissuer/lab-ca --timeout=120s >/dev/null
 }
 
-# The local twin of the Key Vault secrets of contract v1: same names (already Kubernetes-safe) and
+# The local twin of the Key Vault secrets of the contract: same names (already Kubernetes-safe) and
 # keys. tx02v2-lab-app-admin-token is a plain string in Key Vault; here it sits under the key token.
 write_lab_secrets() {
   local db_ip db_port db_name db_user db_password admin_token

@@ -3,9 +3,11 @@
 # Every function fails (non-zero) when the Azure call fails: callers must never treat an API error
 # as "nothing found". Requires the Azure CLI (az login, or OIDC through azure/login in CI).
 
-LAB_PROJECT="${LAB_PROJECT:-tx02v2}"
-LAB_NAME="${LAB_NAME:-tx02v2-lab}"
-LAB_KEY_PREFIX="${LAB_KEY_PREFIX:-tx02v2/lab/}"
+# Fixed by the contract (docs/CONTRATO.md). Never read from the environment: a shell that already
+# exports RESOURCE_GROUP, CLUSTER_NAME or similar for other work must not retarget a script of the lab.
+LAB_PROJECT=tx02v2
+LAB_NAME=tx02v2-lab
+LAB_KEY_PREFIX=tx02v2/lab/
 GUID_RE='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 
 declare -gA CONTRACT=()
@@ -22,6 +24,17 @@ mask() {
 require_az_login() {
   az account show --query id --output tsv >/dev/null ||
     die "the Azure CLI is not logged in (az login, or azure/login in the workflow)."
+}
+
+# require_lab_cluster RESOURCE_GROUP CLUSTER -> the AKS cluster exists in the active subscription and
+# carries the tag Project=tx02v2 of the lab: a cluster of whoever runs the script is never touched,
+# even one with the same names.
+require_lab_cluster() {
+  local tag
+  tag="$(az aks show --resource-group "$1" --name "$2" --query tags.Project --output tsv)" ||
+    die "cannot read the AKS cluster $2 in the resource group $1 of the active subscription"
+  [[ "$tag" == "$LAB_PROJECT" ]] ||
+    die "refusing to touch the AKS cluster $2: it does not carry the tag Project=$LAB_PROJECT (not created by this lab)"
 }
 
 # subscription_id / tenant_id of the active account.

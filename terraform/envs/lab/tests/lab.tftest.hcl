@@ -59,6 +59,11 @@ run "defaults_are_lab_friendly" {
     )
     error_message = "Globally unique names use suffix = substr(sha1(subscription_id), 0, 8) (contract)."
   }
+
+  assert {
+    condition     = local.postgres_name_prefix == "tx02v2-lab-b602d594" && module.postgres.server_name == "tx02v2-lab-b602d594-postgres"
+    error_message = "The PostgreSQL server name is a global DNS name: it carries the suffix, or the lab of one fork blocks the apply of every other one."
+  }
 }
 
 run "contract_keys_in_app_configuration" {
@@ -112,8 +117,8 @@ run "contract_keys_in_app_configuration" {
   }
 
   assert {
-    condition     = output.get_credentials_command == "az aks get-credentials --resource-group tx02v2-lab --name tx02v2-lab --overwrite-existing && kubelogin convert-kubeconfig -l azurecli"
-    error_message = "get_credentials_command must fetch the kubeconfig and convert it for kubelogin (local accounts are disabled)."
+    condition     = output.get_credentials_command == "az aks get-credentials --resource-group tx02v2-lab --name tx02v2-lab --file /tmp/tx02v2-lab.kubeconfig --overwrite-existing && kubelogin convert-kubeconfig -l azurecli --kubeconfig /tmp/tx02v2-lab.kubeconfig"
+    error_message = "get_credentials_command must write the kubeconfig to its own file and convert only that file for kubelogin (local accounts are disabled); ~/.kube/config is never touched."
   }
 
   assert {

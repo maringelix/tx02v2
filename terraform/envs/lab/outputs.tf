@@ -21,8 +21,8 @@ output "node_resource_group" {
 }
 
 output "get_credentials_command" {
-  description = "Writes a kubeconfig entry for the cluster and converts it to Azure CLI tokens (local accounts are disabled; needs kubelogin)."
-  value       = "az aks get-credentials --resource-group ${data.azurerm_resource_group.lab.name} --name ${module.aks.cluster_name} --overwrite-existing && kubelogin convert-kubeconfig -l azurecli"
+  description = "Writes the kubeconfig of the cluster to its own file and converts it to Azure CLI tokens (local accounts are disabled; needs kubelogin); ~/.kube/config, its current context and its other users stay untouched. Then: export KUBECONFIG=/tmp/tx02v2-lab.kubeconfig"
+  value       = "az aks get-credentials --resource-group ${data.azurerm_resource_group.lab.name} --name ${module.aks.cluster_name} --file /tmp/${module.aks.cluster_name}.kubeconfig --overwrite-existing && kubelogin convert-kubeconfig -l azurecli --kubeconfig /tmp/${module.aks.cluster_name}.kubeconfig"
 }
 
 output "appconfig_endpoint" {

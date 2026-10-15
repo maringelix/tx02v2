@@ -12,8 +12,10 @@
 #   4. uninstalls the OpenTelemetry Collector, the External Secrets Operator and the ALB Controller
 #      releases.
 # CLOUD-MUTATING. Fails loudly on any error or timeout. Needs the same tools as platform/install.sh.
-# RESOURCE_GROUP and CLUSTER_NAME default to the contract names (tx02v2-lab): the teardown does
-# not depend on App Configuration.
+# The resource group and the cluster are the contract names (tx02v2-lab), so the teardown does not
+# depend on App Configuration. No environment variable changes them (a shell may export
+# RESOURCE_GROUP or CLUSTER_NAME for other work), and the cluster must carry the tag Project=tx02v2:
+# this script deletes every Route, Gateway and LoadBalancer Service of the cluster it reaches.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,8 +25,8 @@ source "$HERE/../scripts/lib/common.sh"
 source "$REPO_ROOT/scripts/lib/azure.sh"
 export PATH="$REPO_ROOT/.tools/bin:$PATH"
 
-RESOURCE_GROUP="${RESOURCE_GROUP:-$LAB_NAME}"
-CLUSTER_NAME="${CLUSTER_NAME:-$LAB_NAME}"
+RESOURCE_GROUP=$LAB_NAME
+CLUSTER_NAME=$LAB_NAME
 AGC_WAIT_SECONDS="${AGC_WAIT_SECONDS:-900}"
 GATEWAY_CLASS=azure-alb-external
 ALB_LB_CRD=applicationloadbalancers.alb.networking.azure.io
@@ -111,6 +113,7 @@ main() {
   local crds crd
   require_cmd az kubectl helm kubelogin
   require_az_login
+  require_lab_cluster "$RESOURCE_GROUP" "$CLUSTER_NAME"
   WORK_DIR="$(mktemp -d)"
   trap cleanup EXIT
 

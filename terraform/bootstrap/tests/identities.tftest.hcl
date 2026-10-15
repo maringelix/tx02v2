@@ -5,9 +5,12 @@ mock_provider "azurerm" {
 }
 
 variables {
-  github_owner        = "maringelix"
-  subscription_id     = "00000000-0000-0000-0000-000000000000"
-  budget_alert_emails = ["lab-alerts@example.org"]
+  github_owner         = "maringelix"
+  github_owner_id      = "1000000"
+  tx02v2_repository_id = "2000000"
+  dx02v2_repository_id = "3000000"
+  subscription_id      = "00000000-0000-0000-0000-000000000000"
+  budget_alert_emails  = ["lab-alerts@example.org"]
 }
 
 override_resource {
@@ -55,10 +58,10 @@ run "identities_follow_the_contract" {
       for fc in [azurerm_federated_identity_credential.plan_pull_request, azurerm_federated_identity_credential.plan_main] : fc.subject
       if fc.user_assigned_identity_id == azurerm_user_assigned_identity.plan.id
       ] == [
-      "repo:maringelix/tx02v2:pull_request",
-      "repo:maringelix/tx02v2:ref:refs/heads/main",
+      "repo:maringelix@1000000/tx02v2@2000000:pull_request",
+      "repo:maringelix@1000000/tx02v2@2000000:ref:refs/heads/main",
     ]
-    error_message = "tx02v2-gha-plan must trust exactly the tx02v2 pull_request and main subjects."
+    error_message = "tx02v2-gha-plan must trust exactly the tx02v2 pull_request and main subjects, in the immutable format with the owner and repository IDs."
   }
 
   assert {
@@ -71,17 +74,17 @@ run "identities_follow_the_contract" {
   assert {
     condition = (
       azurerm_federated_identity_credential.apply_lab.user_assigned_identity_id == azurerm_user_assigned_identity.apply.id &&
-      azurerm_federated_identity_credential.apply_lab.subject == "repo:maringelix/tx02v2:environment:lab"
+      azurerm_federated_identity_credential.apply_lab.subject == "repo:maringelix@1000000/tx02v2@2000000:environment:lab"
     )
-    error_message = "tx02v2-gha-apply must trust only repo:maringelix/tx02v2:environment:lab."
+    error_message = "tx02v2-gha-apply must trust only the environment lab of tx02v2, with the owner and repository IDs."
   }
 
   assert {
     condition = (
       azurerm_federated_identity_credential.deploy_lab.user_assigned_identity_id == azurerm_user_assigned_identity.deploy.id &&
-      azurerm_federated_identity_credential.deploy_lab.subject == "repo:maringelix/dx02v2:environment:lab"
+      azurerm_federated_identity_credential.deploy_lab.subject == "repo:maringelix@1000000/dx02v2@3000000:environment:lab"
     )
-    error_message = "dx02v2-gha-deploy must trust only repo:maringelix/dx02v2:environment:lab."
+    error_message = "dx02v2-gha-deploy must trust only the environment lab of dx02v2, with the owner and repository IDs."
   }
 
   assert {
@@ -119,18 +122,31 @@ run "github_owner_is_configurable" {
   command = plan
 
   variables {
-    github_owner = "example-org"
+    github_owner         = "example-org"
+    github_owner_id      = "42"
+    tx02v2_repository_id = "4300"
+    dx02v2_repository_id = "4400"
   }
 
   assert {
-    condition     = azurerm_federated_identity_credential.apply_lab.subject == "repo:example-org/tx02v2:environment:lab" && azurerm_federated_identity_credential.deploy_lab.subject == "repo:example-org/dx02v2:environment:lab"
-    error_message = "The owner in the subjects must follow var.github_owner."
+    condition     = azurerm_federated_identity_credential.apply_lab.subject == "repo:example-org@42/tx02v2@4300:environment:lab" && azurerm_federated_identity_credential.deploy_lab.subject == "repo:example-org@42/dx02v2@4400:environment:lab"
+    error_message = "The owner and the IDs in the subjects must follow var.github_owner, github_owner_id and the repository IDs."
   }
 
   assert {
     condition     = azurerm_resource_group.bootstrap.tags["Repository"] == "example-org/tx02v2"
     error_message = "The Repository tag must follow var.github_owner."
   }
+}
+
+run "the_ids_are_numeric" {
+  command = plan
+
+  variables {
+    dx02v2_repository_id = "dx02v2"
+  }
+
+  expect_failures = [var.dx02v2_repository_id]
 }
 
 run "rejects_a_bad_github_owner" {

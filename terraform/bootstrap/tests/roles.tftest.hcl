@@ -7,9 +7,12 @@ mock_provider "azurerm" {
 }
 
 variables {
-  github_owner        = "maringelix"
-  subscription_id     = "00000000-0000-0000-0000-000000000000"
-  budget_alert_emails = ["lab-alerts@example.org"]
+  github_owner         = "maringelix"
+  github_owner_id      = "1000000"
+  tx02v2_repository_id = "2000000"
+  dx02v2_repository_id = "3000000"
+  subscription_id      = "00000000-0000-0000-0000-000000000000"
+  budget_alert_emails  = ["lab-alerts@example.org"]
 }
 
 override_resource {
@@ -53,13 +56,18 @@ run "plan_identity_is_read_only" {
 
   assert {
     condition = { for k, r in azurerm_role_assignment.plan : k => "${r.role_definition_name}@${r.scope}" } == {
-      "reader"                = "Reader@/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab"
-      "aks-cluster-user"      = "Azure Kubernetes Service Cluster User Role@/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab"
-      "keyvault-secrets-user" = "Key Vault Secrets User@/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab"
-      "appconfig-data-reader" = "App Configuration Data Reader@/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab"
-      "state-blob-reader"     = "Storage Blob Data Reader@/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-bootstrap/providers/Microsoft.Storage/storageAccounts/tx02v2tfstateb602d594/blobServices/default/containers/tfstate"
+      "reader"            = "Reader@/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab"
+      "state-blob-reader" = "Storage Blob Data Reader@/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-bootstrap/providers/Microsoft.Storage/storageAccounts/tx02v2tfstateb602d594/blobServices/default/containers/tfstate"
     }
-    error_message = "tx02v2-gha-plan gets exactly the read roles the azurerm refresh needs (docs/ARQUITETURA.md)."
+    error_message = "tx02v2-gha-plan gets Reader on the lab and the state blob, nothing else: no data plane (docs/ARQUITETURA.md, ADR 14)."
+  }
+
+  assert {
+    condition = alltrue([
+      for r in azurerm_role_assignment.plan :
+      !contains(["Key Vault Secrets User", "Key Vault Secrets Officer", "Key Vault Administrator", "App Configuration Data Reader", "App Configuration Data Owner", "Azure Kubernetes Service Cluster User Role"], r.role_definition_name)
+    ])
+    error_message = "tx02v2-gha-plan runs on pull requests of a public repository: it reads no secret value, no App Configuration key and no AKS credential."
   }
 
   assert {
@@ -67,21 +75,6 @@ run "plan_identity_is_read_only" {
     error_message = "Plan roles must go to tx02v2-gha-plan."
   }
 
-  assert {
-    condition = (
-      azurerm_role_definition.plan_appconfig_list_keys.permissions[0].actions == tolist(["Microsoft.AppConfiguration/configurationStores/ListKeys/action"]) &&
-      try(length(azurerm_role_definition.plan_appconfig_list_keys.permissions[0].data_actions), 0) == 0 &&
-      azurerm_role_definition.plan_appconfig_list_keys.assignable_scopes == tolist(["/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab"]) &&
-      azurerm_role_assignment.plan_appconfig_list_keys.scope == "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab" &&
-      azurerm_role_assignment.plan_appconfig_list_keys.principal_id == "11111111-1111-1111-1111-111111111111"
-    )
-    error_message = "The custom plan role allows only App Configuration ListKeys, assignable only in tx02v2-lab."
-  }
-
-  assert {
-    condition     = azurerm_role_definition.plan_appconfig_list_keys.name == "tx02v2-plan-appconfig-listkeys-b602d594"
-    error_message = "Custom role names are unique per tenant: they carry the subscription suffix."
-  }
 }
 
 run "apply_identity_is_scoped_to_the_lab" {
@@ -144,7 +137,6 @@ run "nothing_at_subscription_scope_and_nothing_for_the_deployer" {
     condition = alltrue([
       for r in concat(values(azurerm_role_assignment.plan), values(azurerm_role_assignment.apply), [
         azurerm_role_assignment.apply_rbac_administrator,
-        azurerm_role_assignment.plan_appconfig_list_keys,
         azurerm_role_assignment.state_operator,
       ]) : startswith(r.scope, "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/")
     ])
@@ -153,7 +145,7 @@ run "nothing_at_subscription_scope_and_nothing_for_the_deployer" {
 
   assert {
     condition = alltrue([
-      for r in concat(values(azurerm_role_assignment.plan), values(azurerm_role_assignment.apply), [azurerm_role_assignment.apply_rbac_administrator, azurerm_role_assignment.plan_appconfig_list_keys]) :
+      for r in concat(values(azurerm_role_assignment.plan), values(azurerm_role_assignment.apply), [azurerm_role_assignment.apply_rbac_administrator]) :
       r.principal_id != "33333333-3333-3333-3333-333333333333"
     ])
     error_message = "dx02v2-gha-deploy gets its roles from the lab root, on lab resources only (contract)."

@@ -1,6 +1,14 @@
 # The three GitHub Actions identities of the contract (docs/CONTRATO.md): user-assigned managed
 # identities (no app registration, no client secret, no Entra directory permission needed) with
 # one federated credential per exact subject. Issuer and audience are the GitHub defaults.
+#
+# The subject is the immutable one of GitHub, used by every repository created after 2026-07-15 and
+# by the ones that opted in: repo:<owner>@<owner id>/<repository>@<repository id>:<context>. The
+# name-based subject (repo:<owner>/<repository>:<context>) is not trusted: it does not match those
+# repositories, and whoever registers a deleted account name again would inherit it. A repository
+# that predates 2026-07-15 must opt in to immutable subject claims (docs/RUNBOOK.md, section 2);
+# scripts/repo-guardrails.sh checks it. Only the apply and deploy jobs use the environment lab,
+# whose deployment branches are limited to main (repo-guardrails.sh).
 # Azure rejects concurrent writes of federated credentials under the same identity, so the two
 # credentials of tx02v2-gha-plan are created one after the other.
 
@@ -8,11 +16,14 @@ locals {
   github_issuer   = "https://token.actions.githubusercontent.com"
   github_audience = ["api://AzureADTokenExchange"]
 
+  tx_subject_prefix = "repo:${var.github_owner}@${var.github_owner_id}/tx02v2@${var.tx02v2_repository_id}"
+  dx_subject_prefix = "repo:${var.github_owner}@${var.github_owner_id}/dx02v2@${var.dx02v2_repository_id}"
+
   github_subjects = {
-    plan_pull_request = "repo:${var.github_owner}/tx02v2:pull_request"
-    plan_main         = "repo:${var.github_owner}/tx02v2:ref:refs/heads/main"
-    apply_lab         = "repo:${var.github_owner}/tx02v2:environment:lab"
-    deploy_lab        = "repo:${var.github_owner}/dx02v2:environment:lab"
+    plan_pull_request = "${local.tx_subject_prefix}:pull_request"
+    plan_main         = "${local.tx_subject_prefix}:ref:refs/heads/main"
+    apply_lab         = "${local.tx_subject_prefix}:environment:lab"
+    deploy_lab        = "${local.dx_subject_prefix}:environment:lab"
   }
 }
 

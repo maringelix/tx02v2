@@ -38,9 +38,10 @@ The rules, where each one is enforced and the known limits are in
 
 v2 has never been applied to Azure (`not run in the cloud (v2)`): the Terraform tests use a mocked
 azurerm provider. Inside `tx02v2-lab` the apply identity is powerful (Contributor plus data-plane
-roles), and the plan identity can read the Key Vault secret values because the provider refresh
-reads them; its federated credentials accept only pull requests of this repository and `main`, and
-fork pull requests never get a token. Use a **dedicated subscription**
+roles), and the plan identity reads no data plane (the plan runs with `-refresh=false`: no Key Vault
+secret value, no App Configuration key, no AKS credential); its federated credentials accept only
+pull requests of this repository and `main`, and fork pull requests never get a token. The
+federated subjects are the immutable ones of GitHub, with the numeric owner and repository IDs. Use a **dedicated subscription**
 and keep the `lab` environment protected. Subscription and tenant IDs appear as workflow inputs;
 the workflows mask them, but treat the logs as public. With GitHub-hosted runners the AKS API server
 must accept `0.0.0.0/0` during a round (Entra ID authentication still applies). See the "Limites"

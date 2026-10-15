@@ -40,7 +40,7 @@ será a primeira evidência. Os tempos abaixo são estimativas, não medições.
 az login
 az account set --subscription <SUBSCRIPTION_ID>
 cd terraform/bootstrap
-cp terraform.tfvars.example terraform.tfvars   # subscription_id, budget_alert_emails, github_owner
+cp terraform.tfvars.example terraform.tfvars   # subscription_id, budget_alert_emails, github_owner e os três IDs
 terraform init
 terraform apply
 terraform output -raw backend_hcl > ../envs/lab/backend.hcl
@@ -57,6 +57,17 @@ e os papéis do contrato, e o budget mensal (padrão 25 na moeda de faturamento,
 - `github_owner` não tem padrão: use o seu usuário do GitHub, o dono dos repositórios `tx02v2` e
   `dx02v2` (ou dos seus forks). O placeholder do exemplo (`your-github-user`) e o e-mail
   `you@example.com` são recusados.
+- As credenciais federadas aceitam o `sub` **imutável** do GitHub, que leva os IDs numéricos do dono e
+  do repositório: `repo:<dono>@<id do dono>/tx02v2@<id do repositório>:environment:lab`. Todo repositório
+  criado depois de 2026-07-15 (um fork novo também) já emite esse formato; o formato antigo, só com os
+  nomes, não casa e seria herdado por quem registrasse de novo um nome apagado. Os IDs vêm de
+  `gh api users/<dono> --jq .id`, `gh api repos/<dono>/tx02v2 --jq .id` e
+  `gh api repos/<dono>/dx02v2 --jq .id` (`github_owner_id`, `tx02v2_repository_id` e
+  `dx02v2_repository_id` do `terraform.tfvars`); o `scripts/repo-guardrails.sh` também os imprime.
+- Um repositório criado **antes** de 2026-07-15 precisa aderir às claims de sujeito imutáveis
+  (Settings > Actions > General > OpenID Connect) antes do primeiro apply. Confira com
+  `gh api repos/<dono>/tx02v2/actions/oidc/customization/sub`: o `sub_claim_prefix` deve ter os `@<id>`.
+  Um repositório renomeado ou transferido muda o `sub`: aplique o bootstrap de novo.
 - O state do bootstrap fica **local** (`terraform.tfstate`, ignorado pelo git). Faça backup dele.
 - O registro de providers pode levar alguns minutos no primeiro apply.
 - **A armadilha do Owner**: Owner não tem *data actions*, e a conta do state não aceita chaves
@@ -79,13 +90,18 @@ e os papéis do contrato, e o budget mensal (padrão 25 na moeda de faturamento,
 
 ## 3. Variáveis do GitHub
 
-Settings > Secrets and variables > Actions > **Variables**, como variáveis de repositório (o job de
-plan não roda num environment). Elas aparecem nos logs: não coloque nada privado. Os workflows
-conferem o formato no primeiro passo, mascaram nos logs os IDs de tenant, assinatura e client, o
-object ID do deploy e o sufixo, e trocam todo GUID por `<GUID>` nos resumos.
+Settings > Secrets and variables > Actions, como variáveis de repositório (o job de plan não roda
+num environment). As variáveis aparecem nos logs: não coloque nada privado nelas. As três listas que
+nomeiam as **pessoas e o endereço** de quem opera o lab (`LAB_API_SERVER_AUTHORIZED_IP_RANGES`,
+`LAB_CLUSTER_ADMIN_PRINCIPAL_IDS` e `LAB_APP_DEPLOYER_PRINCIPAL_IDS`) são **secrets**, na aba Secrets:
+os logs, o resumo e os artefatos de um repositório público são públicos, e um secret é mascarado (os
+workflows ainda mascaram cada elemento da lista). Os workflows conferem o formato no primeiro passo,
+mascaram nos logs os IDs de tenant, assinatura e client, o object ID do deploy e o sufixo, e trocam
+todo GUID por `<GUID>` e todo endereço por `<CIDR>` ou `<IP>` nos resumos.
 
 O `FORK.md` (passo 7) grava os outputs `github_variables_tx02v2` e `github_variables_dx02v2` do
-bootstrap com `gh variable set -f`; as variáveis `LAB_*` que você escolhe vêm da tabela abaixo.
+bootstrap com `gh variable set -f` e o output `github_secrets_tx02v2` com `gh secret set -f`; as
+variáveis e os secrets `LAB_*` que você escolhe vêm da tabela abaixo.
 
 ### tx02v2
 
@@ -98,10 +114,10 @@ bootstrap com `gh variable set -f`; as variáveis `LAB_*` que você escolhe vêm
 | `TF_STATE_STORAGE_ACCOUNT` | `tx02v2tfstate00000000` | plan, apply, destroy | idem (`state_storage_account_name`) |
 | `LAB_LOCATION` | `eastus2` | plan, apply, destroy (`TF_VAR_location`) | idem; tem de ser a região do bootstrap |
 | `LAB_DEPLOY_PRINCIPAL_ID` | `00000000-0000-0000-0000-000000000000` | plan, apply, destroy (`TF_VAR_deploy_principal_id`) | idem (`deploy_principal_id`) |
-| `LAB_CLUSTER_ADMIN_PRINCIPAL_IDS` | `["11111111-1111-1111-1111-111111111111","22222222-2222-2222-2222-222222222222"]` | `TF_VAR_cluster_admin_principal_ids` (lista JSON) | o output traz só o `apply_principal_id` (necessário para platform e destroy); acrescente o seu object ID (`az ad signed-in-user show --query id -o tsv`) |
-| `LAB_API_SERVER_AUTHORIZED_IP_RANGES` | `["0.0.0.0/0"]` | `TF_VAR_api_server_authorized_ip_ranges` (lista JSON) | runners hospedados do GitHub têm IPs variáveis: precisam de `0.0.0.0/0` |
+| `LAB_CLUSTER_ADMIN_PRINCIPAL_IDS` (**secret**) | `["11111111-1111-1111-1111-111111111111","22222222-2222-2222-2222-222222222222"]` | `TF_VAR_cluster_admin_principal_ids` (lista JSON) | o output `github_secrets_tx02v2` traz só o `apply_principal_id` (necessário para platform e destroy); acrescente o seu object ID (`az ad signed-in-user show --query id -o tsv`) |
+| `LAB_API_SERVER_AUTHORIZED_IP_RANGES` (**secret**) | `["0.0.0.0/0"]` | `TF_VAR_api_server_authorized_ip_ranges` (lista JSON) | runners hospedados do GitHub têm IPs variáveis: precisam de `0.0.0.0/0` |
 | `LAB_ALLOW_API_SERVER_FROM_ANYWHERE` | `true` | `TF_VAR_allow_api_server_from_anywhere` | opcional, padrão `false`; obrigatório com `0.0.0.0/0` |
-| `LAB_APP_DEPLOYER_PRINCIPAL_IDS` | `[]` | `TF_VAR_app_deployer_principal_ids` e o workflow `platform` (RoleBinding) | opcional, padrão `[]`; object IDs de quem faz deploy do dx02v2 de um laptop |
+| `LAB_APP_DEPLOYER_PRINCIPAL_IDS` (**secret**) | `[]` | `TF_VAR_app_deployer_principal_ids` e o workflow `platform` (RoleBinding) | opcional, padrão `[]`; object IDs de quem faz deploy do dx02v2 de um laptop |
 | `LAB_ENABLE_WAF` | `true` | `TF_VAR_enable_waf` | opcional, padrão `true` (`docs/CUSTOS.md`) |
 
 `TF_VAR_github_owner` vem de `github.repository_owner`. Os demais inputs usam os padrões de
@@ -120,7 +136,7 @@ de qualquer IP durante a rodada (o token do Entra ID e o RBAC continuam obrigat�
 | `AZURE_APPCONFIG_ENDPOINT` | `https://tx02v2-lab-00000000.azconfig.io` | idem; o store só existe depois do apply (output `appconfig_endpoint` do lab) |
 
 O job `deploy-azure` do dx02v2 roda no environment `lab` daquele repositório (sujeito federado
-`repo:<owner>/dx02v2:environment:lab`).
+`repo:<owner>@<id do dono>/dx02v2@<id do repositório>:environment:lab`).
 
 ## 4. Apply
 
@@ -221,38 +237,68 @@ Registre o resultado no `cloud_run_report`.
 ## 8. Destroy
 
 Dispare `terraform-destroy` com a confirmação `destroy tx02v2-lab` e aprove o environment `lab`. O job
-roda `platform/uninstall.sh` (se o cluster existir: apaga HTTPRoutes, Gateways, políticas do ALB e
-Services `LoadBalancer` e desinstala os releases), `terraform destroy`, faz login de novo e roda
-`scripts/leftovers.sh --retry-for 900`. Qualquer erro para o job: leia o log, corrija e rode de novo.
-Como apaga tudo isso no cluster que alcança, o `platform/uninstall.sh` só age no cluster `tx02v2-lab`
-do grupo `tx02v2-lab` com a tag `Project=tx02v2`; nenhuma variável de ambiente (`RESOURCE_GROUP`,
-`CLUSTER_NAME`) muda o alvo, e o kubeconfig dele é temporário. Localmente:
+roda `scripts/destroy.sh --subscription <ID>`:
+
+1. `platform/uninstall.sh`, se o cluster existir (apaga HTTPRoutes, Gateways, políticas do ALB e
+   Services `LoadBalancer` e desinstala os releases). Como apaga tudo isso no cluster que alcança, ele
+   só age no cluster `tx02v2-lab` do grupo `tx02v2-lab` com a tag `Project=tx02v2`; nenhuma variável
+   de ambiente (`RESOURCE_GROUP`, `CLUSTER_NAME`) muda o alvo, e o kubeconfig dele é temporário.
+2. Se o passo 1 falhar (API do cluster fora do ar ou fora de `api_server_authorized_ip_ranges`,
+   controlador parado, tempo esgotado), o destroy **segue**: neste lab o controlador não é dono de
+   nenhum recurso da Azure (o AGC, o frontend e a associação são do Terraform; os IPs públicos dos
+   Services ficam no grupo de nós, que o AKS apaga com o cluster). Um aviso `warning:
+   platform/uninstall.sh did not finish` marca esse caminho.
+3. `terraform destroy`.
+
+Depois, o workflow faz login de novo e roda `scripts/leftovers.sh --subscription <ID> --retry-for 900`
+com `if: always()`, também depois de um destroy que falhou. Qualquer erro aparece no log: leia,
+corrija e rode de novo. O fluxo é testado sem Azure (check `destroy-flow` do harness, com `az`,
+`terraform`, `kubectl`, `helm` e `kubelogin` simulados). Localmente:
 
 ```bash
-platform/uninstall.sh
-terraform -chdir=terraform/envs/lab destroy        # como Owner: -var purge_key_vault_on_destroy=true
-scripts/leftovers.sh --retry-for 900
+export TF_STATE_STORAGE_ACCOUNT=<conta do state> ARM_SUBSCRIPTION_ID=<ID>   # mais as TF_VAR_* do lab
+scripts/destroy.sh --subscription "$ARM_SUBSCRIPTION_ID"        # como Owner: TF_VAR_purge_key_vault_on_destroy=true
+scripts/leftovers.sh --subscription "$ARM_SUBSCRIPTION_ID" --retry-for 900
 ```
+
+**Rodada interrompida** (um apply ou destroy cancelado, ou que estourou o tempo) deixa o *lease* do
+blob do state: o próximo `terraform` falha com `Error acquiring the state lock` e um `ID`. Rode
+`terraform-destroy` com o input `force_unlock_id` preenchido com esse ID (localmente,
+`scripts/destroy.sh --subscription <ID> --force-unlock <ID>`). Se o apply parou no meio e criou algo que
+não entrou no state, o próximo apply falha com `already exists` ou `ResourceAlreadyExists`: importe o
+recurso (`terraform import <endereço> <id>`) ou apague-o, e rode de novo.
 
 O grupo `tx02v2-lab` continua existindo, vazio (é do bootstrap); o grupo de nós `tx02v2-lab-nodes`
 some com o cluster. O Key Vault fica em soft delete por 7 dias e prende o nome
-(`docs/ARQUITETURA.md`, "A armadilha do soft delete").
+(`docs/ARQUITETURA.md`, "A armadilha do soft delete"). A purga pede uma permissão no escopo da
+assinatura, que as identidades de CI não têm: o `scripts/leftovers.sh` imprime, como `INFO`, o comando
+exato de cada vault e de cada App Configuration em soft delete do lab, para rodar como Owner:
+
+```bash
+az keyvault purge --name tx02v2-lab-<suffix> --location <location> --subscription <ID>
+az appconfig purge --name tx02v2-lab-<suffix> --location <location> --subscription <ID> --yes
+```
 
 ## 9. Sobras
 
-No workflow, o `scripts/leftovers.sh` roda com a identidade do apply, que só enxerga o que pode ler:
-as listagens no escopo da assinatura podem voltar só os recursos de `tx02v2-lab`, sem erro, e o que
-ela não pode ler de jeito nenhum (por exemplo o grupo de nós) aparece como `UNCHECKED`, com um aviso,
-sem mudar o código de saída. Para uma checagem completa, rode localmente como Owner da assinatura:
+O `scripts/leftovers.sh` recebe sempre a assinatura (`--subscription <ID>`): toda chamada `az` a
+nomeia, e o `az account set` da máquina nunca decide o que é varrido. Só conta como sobra o que é do
+lab: recurso com a tag `Project=tx02v2` ou nos grupos `tx02v2-lab` e `tx02v2-lab-nodes`. O mesmo tipo
+de recurso de outro trabalho na assinatura (IP público, load balancer, disco, PostgreSQL, AGC) aparece
+como `INFO` ("not the lab's"), **nunca** como algo a apagar. No workflow, o script roda com a identidade
+do apply, que só enxerga o que pode ler: o que ela não pode ler de jeito nenhum (por exemplo o grupo
+de nós) aparece como `UNCHECKED`, com um aviso, sem mudar o código de saída. Para uma checagem
+completa, rode localmente como Owner da assinatura:
 
 ```bash
-az login && az account set --subscription <SUBSCRIPTION_ID>
-scripts/leftovers.sh --retry-for 900
+az login
+scripts/leftovers.sh --subscription <SUBSCRIPTION_ID> --retry-for 900
 ```
 
 Níveis: `BILLABLE` (ainda custa; sai com 1), `ORPHANED` (grátis, mas atrapalha a próxima rodada),
-`INFO` (recursos do bootstrap, nomes presos por soft delete), `UNCHECKED`; saída 2 = problema de
-login ou erro da API. Remoção manual dos casos mais comuns:
+`INFO` (recursos do bootstrap, nomes presos por soft delete, itens de outro trabalho), `UNCHECKED`;
+saída 2 = problema de login ou erro da API. Remoção manual dos casos mais comuns, **só para itens
+`BILLABLE` ou `ORPHANED`** (confira a tag `Project=tx02v2` ou o prefixo `tx02v2-lab` antes):
 
 ```bash
 az resource delete --ids <RESOURCE_ID>
@@ -260,7 +306,7 @@ az group delete --name tx02v2-lab-nodes --yes
 az network public-ip delete --ids <RESOURCE_ID>
 az network lb delete --ids <RESOURCE_ID>
 az disk delete --ids <RESOURCE_ID> --yes
-az keyvault purge --name tx02v2-lab-<suffix>
+az keyvault purge --name tx02v2-lab-<suffix> --location <location>
 az monitor log-analytics workspace delete --resource-group tx02v2-lab --workspace-name tx02v2-lab-logs --force --yes
 ```
 

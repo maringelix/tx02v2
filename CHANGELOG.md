@@ -8,6 +8,30 @@ All notable changes to this project are documented here. The format follows
 
 ### Security
 
+- The cloud path no longer trusts anyone who registers a deleted account name, it works for the
+  repositories GitHub creates now, and the plan identity reads no secret (roadmap R3.13, R3.15,
+  R3.16, R3.17):
+  - The federated credentials pin the immutable subject,
+    `repo:<owner>@<owner id>/<repository>@<repository id>:<context>`, which every repository created
+    after 2026-07-15 (a fork too) emits; the name-based subject no longer matched them. New bootstrap
+    variables `github_owner_id`, `tx02v2_repository_id` and `dx02v2_repository_id` (the `gh api`
+    commands are in `docs/RUNBOOK.md`).
+  - `scripts/repo-guardrails.sh` (same file in the six lab repositories) fails, instead of skipping,
+    when it cannot protect the environment `lab`; it leaves only `main` in it, reads it back, fails
+    when the OIDC subject of the repository is name-based and refuses an argument that is not the
+    repository of the clone.
+  - `tx02v2-gha-plan` has `Reader` on the lab and the state, nothing else: no `Key Vault Secrets User`,
+    no `App Configuration Data Reader`, no AKS credential, no custom `ListKeys` role. The plan runs with
+    `-refresh=false` (ADR 14).
+  - The lists of people and addresses (`LAB_API_SERVER_AUTHORIZED_IP_RANGES`,
+    `LAB_CLUSTER_ADMIN_PRINCIPAL_IDS`, `LAB_APP_DEPLOYER_PRINCIPAL_IDS`) are secrets, masked element
+    by element; the job summary and the artifacts replace CIDRs and IPs. New output
+    `github_secrets_tx02v2`; `policy-workflows` enforces all of it.
+  - `scripts/leftovers.sh` takes the subscription explicitly (`--subscription`) and counts as
+    leftover only what is the lab's (tag `Project=tx02v2` or the groups `tx02v2-lab` and
+    `tx02v2-lab-nodes`): the same kinds of resource of other work are INFO "(not the lab's)". It prints
+    the exact purge command of each soft-deleted vault and App Configuration store. New check
+    `leftovers-flow` runs it against a simulated subscription that also holds other work.
 - Scripts act only on what the lab created, so whoever forks it can run them on a machine and a
   subscription that also hold other work:
   - `platform/uninstall.sh` (it deletes every Route, Gateway, Application Gateway for Containers
@@ -52,6 +76,18 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- `scripts/destroy.sh` (roadmap R3.14), run by `terraform-destroy`: the platform uninstall may fail
+  and the destroy goes on; the workflow has an optional `force_unlock_id` input for the lease of an
+  interrupted apply, and the leftover check runs with `if: always()`. New check `destroy-flow` runs the
+  script with simulated `az`, `terraform`, `kubectl`, `helm` and `kubelogin`; `docs/RUNBOOK.md`
+  documents the recovery.
+- Pre-flight of `scripts/local-lab.sh up` (roadmap R3.18): the Docker CLI and the Terraform provider
+  must talk to the same daemon, the lab network must not overlap a Docker network or a route of the
+  machine, the registry port must be free. `down` and `e2e` refuse a lab that their state directory
+  did not create, and `e2e` refuses a lab that is already up (it would destroy it). `make clean`
+  removes things only under the directory of the Makefile. The pre-flight is also
+  `scripts/local-lab.sh preflight`, and the new check `local-preflight` runs it against a simulated
+  `docker`, `kind` and `ip`.
 - `LOCAL_SIZE=small` for the local platform (roadmap R1.8, the port of tx01v2):
   `platform/local/values/small/<chart>.yaml` goes last in `helm_install`, with smaller memory limits
   and `GOMEMLIMIT` below them, 2 h of retention in Prometheus and 1 h in Tempo, no cAdvisor, kubelet

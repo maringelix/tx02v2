@@ -98,6 +98,7 @@ REQUIRED_FILES=(
   docs/ARQUITETURA.md docs/PUBLICACAO.md docs/CUSTOS.md docs/LICOES_APRENDIDAS.md
   tools/versions.env tools/checksums.txt
   scripts/install-tools.sh scripts/update-tool-checksums.sh scripts/harness.sh scripts/repo-guardrails.sh scripts/leftovers.sh
+  scripts/destroy.sh scripts/tests/destroy-flow.sh scripts/tests/leftovers-flow.sh scripts/tests/local-preflight.sh
   scripts/lib/common.sh scripts/lib/tools.sh scripts/lib/azure.sh
   platform/install.sh platform/uninstall.sh platform/render-manifests.sh platform/versions.env
   platform/values/alb-controller.yaml platform/values/external-secrets.yaml
@@ -711,6 +712,25 @@ check_policy_identifiers() {
   return "$rc"
 }
 
+# scripts/destroy.sh with simulated az, terraform, kubectl and helm: an uninstall that fails still ends
+# in terraform destroy (docs/GUARDRAILS.md, CUSTO-03).
+check_destroy_flow() {
+  bash scripts/tests/destroy-flow.sh
+}
+
+# The pre-flight of scripts/local-lab.sh with a simulated docker, kind and ip: a machine whose Docker
+# CLI and provider disagree, whose network or route overlaps the lab or whose registry port is taken
+# is refused, and a lab of another state directory is never touched (docs/GUARDRAILS.md, LOC-06).
+check_local_preflight() {
+  bash scripts/tests/local-preflight.sh
+}
+
+# scripts/leftovers.sh with a simulated az: in a subscription that also holds other work only the lab's
+# resources are billable leftovers, and every az call names the subscription (SEC-14).
+check_leftovers_flow() {
+  bash scripts/tests/leftovers-flow.sh
+}
+
 # Scripts act only on what the lab created (docs/GUARDRAILS.md, SEC-14): no variable of the caller's
 # shell chooses their target (a forker may have RESOURCE_GROUP or CLUSTER_NAME exported for another
 # cluster), the cloud kubeconfig is a temporary file (kubelogin converts only that file), the cloud
@@ -721,12 +741,12 @@ check_policy_scripts() {
   local rc=0 out f
   forbid '\$\{(CLUSTER_NAME|RESOURCE_GROUP|LAB_[A-Z_]+|CONTRACT_PARAMETER)(:-|-|:=|=)' \
     "an environment variable must never choose the target of a script of the lab" '*.sh' scripts platform || rc=1
-  out="$(grep -rn --include='*.sh' --exclude=harness.sh -e 'aks get-credentials' scripts platform | grep -v -e '--file "\$KUBECONFIG"')" || true
+  out="$(grep -rn --include='*.sh' --exclude=harness.sh --exclude-dir=tests -e 'aks get-credentials' scripts platform | grep -v -e '--file "\$KUBECONFIG"')" || true
   [[ -z "$out" ]] || {
     printf 'az aks get-credentials must write a temporary file (--file "$KUBECONFIG"), never ~/.kube/config:\n%s\n' "$out"
     rc=1
   }
-  out="$(grep -rn --include='*.sh' --exclude=harness.sh -e 'kubelogin convert-kubeconfig' scripts platform | grep -v -e '--kubeconfig "\$KUBECONFIG"')" || true
+  out="$(grep -rn --include='*.sh' --exclude=harness.sh --exclude-dir=tests -e 'kubelogin convert-kubeconfig' scripts platform | grep -v -e '--kubeconfig "\$KUBECONFIG"')" || true
   [[ -z "$out" ]] || {
     printf 'kubelogin convert-kubeconfig must convert only the temporary file (--kubeconfig "$KUBECONFIG"):\n%s\n' "$out"
     rc=1
@@ -856,7 +876,15 @@ check_policy_workflows() {
       /\|\|[[:space:]]*(true|echo|:)([[:space:]]|$)/ { err("never swallow errors (|| true, || echo, || :)") }
       /aquasecurity\/(trivy-action|setup-trivy)/ { err("trivy-action/setup-trivy are forbidden; trivy comes from scripts/install-tools.sh") }
       /(^|[^A-Za-z])sed[[:space:]].*\.tf([^A-Za-z]|$)/ { err("never edit Terraform files with sed") }
-      /^[[:space:]]+(- )?run: terraform .* plan( |$)/ { plans++; if ($0 ~ / -lock=false( |$)/) nolock++ }
+      /^[[:space:]]+(- )?run: terraform .* plan( |$)/ { plans++; if ($0 ~ / -lock=false( |$)/) nolock++; if ($0 ~ / -refresh=false( |$)/) norefresh++ }
+      # The logs, the job summary and the artifacts of a public repository are public: the lists that
+      # name the people and the addresses of the operator come from secrets (masked), and the job
+      # masks each element on its own because Terraform prints them one by one.
+      /^[[:space:]]+(TF_VAR_cluster_admin_principal_ids|TF_VAR_app_deployer_principal_ids|TF_VAR_api_server_authorized_ip_ranges|APP_DEPLOYER_PRINCIPAL_IDS):/ {
+        lists_env = 1
+        if ($0 !~ /secrets\.LAB_/) err("the lists of people and addresses must come from secrets.LAB_* (a variable is printed in clear in the logs)")
+      }
+      /::add-mask::/ { masks = 1 }
       /^[^#]*terraform .*(apply|destroy).*-lock=false/ { err("apply and destroy must keep the state lock") }
       END {
         if (in_login) close_login()
@@ -878,6 +906,8 @@ check_policy_workflows() {
           if (!azlogin && file !~ /terraform-(plan|apply)\.yml$/) { printf "%s: cloud workflows log in with azure/login (OIDC)\n", file; bad = 1 }
         }
         if (file ~ /terraform-plan\.yml$/ && (!plans || nolock != plans)) { printf "%s: every terraform plan step runs with -lock=false (the plan identity can only read the state)\n", file; bad = 1 }
+        if (file ~ /terraform-plan\.yml$/ && norefresh != plans) { printf "%s: every terraform plan step runs with -refresh=false (the plan identity reads no data plane)\n", file; bad = 1 }
+        if (lists_env && !masks) { printf "%s: a workflow that takes the lists of people and addresses must mask each element (::add-mask::)\n", file; bad = 1 }
         if (checkouts != persist) { printf "%s: every actions/checkout needs persist-credentials: false\n", file; bad = 1 }
         exit bad
       }' "$f")" || {
@@ -906,12 +936,17 @@ check_policy_workflows() {
       echo "$f: the first step must refuse anything but the typed confirmation 'destroy tx02v2-lab'"
       rc=1
     }
-    grep -qE '^[[:space:]]+run: bash scripts/leftovers\.sh' "$f" || {
-      echo "$f: the destroy must end with scripts/leftovers.sh"
+    grep -qE '^[[:space:]]+run: bash scripts/leftovers\.sh --subscription' "$f" || {
+      echo "$f: the destroy must end with scripts/leftovers.sh --subscription <id>"
       rc=1
     }
-    grep -qE 'bash platform/uninstall\.sh' "$f" || {
-      echo "$f: the destroy must run platform/uninstall.sh while the cluster exists"
+    grep -qE 'bash scripts/destroy\.sh --subscription' "$f" || {
+      echo "$f: the destroy must run scripts/destroy.sh (platform uninstall, terraform destroy, force-unlock)"
+      rc=1
+    }
+    # The leftover check and the login before it run after a failed destroy too.
+    awk '/^      - name: Leftover check/ { l = 1 } l && /^        if: always\(\)/ { ok = 1 } END { exit !ok }' "$f" || {
+      echo "$f: the leftover check must have if: always()"
       rc=1
     }
   fi
@@ -1412,6 +1447,9 @@ register_checks() {
   register static policy-identifiers check_policy_identifiers
   register static policy-workflows check_policy_workflows
   register static policy-scripts check_policy_scripts
+  register static destroy-flow check_destroy_flow
+  register static local-preflight check_local_preflight
+  register static leftovers-flow check_leftovers_flow
   register static trivyignore-policy check_trivyignore_policy
   register static contract-platform check_contract_platform
   register static contract-appconfig check_contract_appconfig

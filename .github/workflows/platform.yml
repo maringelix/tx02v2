@@ -32,7 +32,8 @@ jobs:
       contents: read
       id-token: write
     env:
-      APP_DEPLOYER_PRINCIPAL_IDS: ${{ vars.LAB_APP_DEPLOYER_PRINCIPAL_IDS || '[]' }}
+      # Secrets, not variables: the logs of a public repository are public, and a secret is masked.
+      APP_DEPLOYER_PRINCIPAL_IDS: ${{ secrets.LAB_APP_DEPLOYER_PRINCIPAL_IDS || '[]' }}
     steps:
       - name: Check repository variables
         env:
@@ -49,7 +50,7 @@ jobs:
           [[ "$APP_DEPLOYER_PRINCIPAL_IDS" =~ $json_list ]] || problems+=("LAB_APP_DEPLOYER_PRINCIPAL_IDS must be a JSON list, e.g. []")
           if ((${#problems[@]} > 0)); then
             printf '::error::Repository variable problem: %s\n' "${problems[@]}"
-            echo "::error::Settings > Secrets and variables > Actions > Variables; names and values in docs/RUNBOOK.md (section 'Variáveis do GitHub')."
+            echo "::error::Settings > Secrets and variables > Actions (the lists of people and addresses are secrets, the rest variables); names and values in docs/RUNBOOK.md (section 'Variáveis do GitHub')."
             exit 1
           fi
           # Identifiers never reach the logs of a public repository.
@@ -57,6 +58,16 @@ jobs:
             echo "::add-mask::${!v}"
           done
           echo "::add-mask::$(printf '%s' "$AZURE_SUBSCRIPTION_ID" | sha1sum | cut -c1-8)"
+
+      - name: Mask the people of the operator in the logs
+        run: |
+          if [[ "$APP_DEPLOYER_PRINCIPAL_IDS" != "[]" ]]; then
+            items="$(jq -r '.[]' <<<"$APP_DEPLOYER_PRINCIPAL_IDS")"
+            while IFS= read -r item; do
+              [[ -n "$item" ]] || continue
+              echo "::add-mask::$item"
+            done <<<"$items"
+          fi
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

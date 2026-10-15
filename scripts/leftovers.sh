@@ -5,11 +5,15 @@
 #   INFO       expected (bootstrap resources) or a name that stays reserved (soft-deleted vaults)
 #   UNCHECKED  this identity may not read that scope: the CI identities are scoped to tx02v2-lab,
 #              so run the script locally as the subscription Owner for a complete scan
-# Usage: scripts/leftovers.sh [--retry-for SECONDS]   (needs `az login` or azure/login)
-#   --retry-for re-scans every 60 s until nothing billable remains or the time is up (deletions
-#   still running right after a destroy). Exit 2 on usage or Azure API errors.
-# A dedicated subscription is assumed (docs/RUNBOOK.md): every public IP, load balancer, managed
-# disk, Application Gateway for Containers and PostgreSQL server in it counts.
+# Usage: scripts/leftovers.sh --subscription ID [--retry-for SECONDS]   (needs `az login` or azure/login)
+#   --subscription  the subscription of the lab, always explicit: every az call names it, so the
+#                   active account of the machine (`az account set`) never decides what is scanned
+#   --retry-for     re-scans every 60 s until nothing billable remains or the time is up (deletions
+#                   still running right after a destroy). Exit 2 on usage or Azure API errors.
+# Only what belongs to the lab counts: a resource tagged Project=tx02v2, or in the resource groups
+# tx02v2-lab and tx02v2-lab-nodes. The same kinds of resource of any other work in the subscription
+# are listed as INFO "(not the lab's)", never as something to delete. The soft-deleted vaults and
+# stores of the lab are listed with the exact command that purges them.
 set -euo pipefail
 
 # shellcheck source=scripts/lib/common.sh
@@ -19,6 +23,7 @@ source "$REPO_ROOT/scripts/lib/azure.sh"
 
 LAB_RG="$LAB_NAME"
 NODE_RG="$LAB_NAME-nodes"
+SUBSCRIPTION=""
 # Resource types without a charge of their own (anything else is treated as billable).
 FREE_TYPES=" microsoft.managedidentity/userassignedidentities microsoft.network/networksecuritygroups microsoft.network/virtualnetworks microsoft.network/routetables microsoft.network/networkwatchers "
 
@@ -33,7 +38,7 @@ cleanup() {
 }
 
 usage() {
-  echo "usage: $0 [--retry-for SECONDS]" >&2
+  echo "usage: $0 --subscription ID [--retry-for SECONDS]" >&2
   exit 2
 }
 
@@ -64,7 +69,7 @@ az_items() {
   shift 2
   _items=()
   NOT_FOUND=0
-  out="$("$@" 2>"$err")" || rc=$?
+  out="$("$@" --subscription "$SUBSCRIPTION" 2>"$err")" || rc=$?
   if ((rc != 0)); then
     if grep -qE 'AuthorizationFailed|does not have authorization' "$err"; then
       printf '%-9s %-38s %s\n' UNCHECKED "$what" "this identity cannot read it (run the scan locally as the subscription Owner)"
@@ -83,6 +88,31 @@ az_items() {
   [[ -z "$out" ]] || mapfile -t _items <<<"$out"
 }
 
+# lab_owned RESOURCE_GROUP PROJECT_TAG -> success when the resource is the lab's: tagged Project=tx02v2
+# or in one of the two resource groups of the lab (resource group names compare case-insensitively:
+# Azure reports the node group in upper case in some resource IDs).
+lab_owned() {
+  local rg="${1,,}"
+  [[ "$2" == "$LAB_PROJECT" || "$rg" == "${LAB_RG,,}" || "$rg" == "${NODE_RG,,}" ]]
+}
+
+# scoped WHAT AZ_CMD... -> runs a list command of the subscription and reports every item: BILLABLE
+# when it is the lab's, INFO "(not the lab's)" when it belongs to other work.
+scoped() {
+  local what=$1 line id rg project
+  local -a items=()
+  shift
+  az_items items "$what" "$@" --query "[].join('|', [id, resourceGroup || '', tags.Project || ''])" --output tsv
+  for line in "${items[@]}"; do
+    IFS='|' read -r id rg project <<<"$line"
+    if lab_owned "$rg" "$project"; then
+      found BILLABLE "$what" "$id"
+    else
+      found INFO "$what (not the lab's)" "$id"
+    fi
+  done
+}
+
 # classify WHAT "TYPE|ID"... -> BILLABLE, or ORPHANED for the free resource types.
 classify() {
   local what=$1 entry type
@@ -99,7 +129,7 @@ classify() {
 
 scan() {
   local -a items=() pending=()
-  local entry rg type id stack
+  local entry rg type id stack line name location
 
   az_items items "resource group $LAB_RG" \
     az resource list --resource-group "$LAB_RG" --query "[].join('|', [type, id])" --output tsv
@@ -118,22 +148,13 @@ scan() {
     classify "in $NODE_RG" "${items[@]}"
   fi
 
-  az_items items "Application Gateway for Containers" \
-    az resource list --resource-type Microsoft.ServiceNetworking/trafficControllers --query '[].id' --output tsv
-  found BILLABLE "Application Gateway for Containers" "${items[@]}"
-
-  az_items items "PostgreSQL flexible servers" az postgres flexible-server list --query '[].id' --output tsv
-  found BILLABLE "PostgreSQL flexible server" "${items[@]}"
-
-  az_items items "public IP addresses" az network public-ip list --query '[].id' --output tsv
-  found BILLABLE "public IP address" "${items[@]}"
-
-  az_items items "load balancers" az network lb list --query '[].id' --output tsv
-  found BILLABLE "load balancer" "${items[@]}"
-
+  scoped "Application Gateway for Containers" \
+    az resource list --resource-type Microsoft.ServiceNetworking/trafficControllers
+  scoped "PostgreSQL flexible server" az postgres flexible-server list
+  scoped "public IP address" az network public-ip list
+  scoped "load balancer" az network lb list
   # PersistentVolumes with reclaimPolicy Retain survive the cluster as managed disks.
-  az_items items "managed disks" az disk list --query '[].id' --output tsv
-  found BILLABLE "managed disk" "${items[@]}"
+  scoped "managed disk" az disk list
 
   az_items items "Log Analytics workspaces" \
     az monitor log-analytics workspace list --query "[?starts_with(name, '$LAB_NAME')].id" --output tsv
@@ -153,13 +174,24 @@ scan() {
   done
   classify "tagged Project=$LAB_PROJECT" "${pending[@]}"
 
-  # Names that stay reserved after a destroy (they block the next round, nothing is billed).
+  # Names that stay reserved after a destroy (they block the next round, nothing is billed). The
+  # purge needs a permission at the scope of the subscription, which the CI identities do not have:
+  # the exact command is printed to be run as the Owner (docs/RUNBOOK.md, section 8).
   az_items items "soft-deleted Key Vaults" \
-    az keyvault list-deleted --resource-type vault --query "[?starts_with(name, '$LAB_NAME')].name" --output tsv
-  found INFO "soft-deleted Key Vault (az keyvault purge --name <name>)" "${items[@]}"
+    az keyvault list-deleted --resource-type vault \
+    --query "[?starts_with(name, '$LAB_NAME')].join('|', [name, properties.location])" --output tsv
+  for line in "${items[@]}"; do
+    IFS='|' read -r name location <<<"$line"
+    found INFO "soft-deleted Key Vault, free the name with" \
+      "az keyvault purge --name $name --location $location --subscription $SUBSCRIPTION"
+  done
   az_items items "deleted App Configuration stores" \
-    az appconfig list-deleted --query "[?starts_with(name, '$LAB_NAME')].name" --output tsv
-  found INFO "deleted App Configuration store" "${items[@]}"
+    az appconfig list-deleted --query "[?starts_with(name, '$LAB_NAME')].join('|', [name, location])" --output tsv
+  for line in "${items[@]}"; do
+    IFS='|' read -r name location <<<"$line"
+    found INFO "deleted App Configuration store, free the name with" \
+      "az appconfig purge --name $name --location $location --subscription $SUBSCRIPTION --yes"
+  done
   az_items items "deleted Log Analytics workspaces" \
     az monitor log-analytics workspace list-deleted-workspaces --query "[?starts_with(name, '$LAB_NAME')].name" --output tsv
   found INFO "soft-deleted Log Analytics workspace" "${items[@]}"
@@ -174,16 +206,22 @@ main() {
         retry_for=$2
         shift 2
         ;;
+      --subscription)
+        [[ "${2:-}" =~ $GUID_RE ]] || usage
+        SUBSCRIPTION=$2
+        shift 2
+        ;;
       *) usage ;;
     esac
   done
+  [[ -n "$SUBSCRIPTION" ]] || usage
   # Exit 2 (not 1) for setup problems, so they are never mistaken for "billable leftovers found".
   command -v az >/dev/null 2>&1 || {
     echo "error: the Azure CLI (az) is required" >&2
     exit 2
   }
-  az account show --query id --output tsv >/dev/null || {
-    echo "error: the Azure CLI is not logged in (az login, or azure/login in the workflow)" >&2
+  az account show --subscription "$SUBSCRIPTION" --query id --output tsv >/dev/null || {
+    echo "error: the Azure CLI is not logged in, or this account cannot see the subscription (az login, or azure/login in the workflow)" >&2
     exit 2
   }
   WORK_DIR="$(mktemp -d)"
@@ -194,7 +232,7 @@ main() {
     BILLABLE=0
     UNCHECKED=0
     SEEN=()
-    log "scanning the active subscription for leftovers of $LAB_NAME ..."
+    log "scanning the subscription $(printf '%s' "$SUBSCRIPTION" | cut -c1-8)... for leftovers of $LAB_NAME ..."
     scan
     if ((UNCHECKED > 0)); then
       log "warning: $UNCHECKED scan(s) were not possible with this identity: run scripts/leftovers.sh locally as the subscription Owner (docs/RUNBOOK.md)."

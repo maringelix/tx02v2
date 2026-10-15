@@ -1,9 +1,12 @@
 # Read-only plan of terraform/envs/lab with the managed identity tx02v2-gha-plan (federated
 # subjects: pull_request and refs/heads/main of tx02v2; no environment). Runs only when
 # AZURE_PLAN_CLIENT_ID is configured and the PR comes from this repository: forks never get Azure
-# credentials. Plans use -lock=false (the plan identity can only read the state). Terraform logs in
-# with OIDC through the ARM_* variables; GUIDs and the name suffix are masked in the logs and
-# replaced in the job summary and the artifact (they are public in a public repository).
+# credentials. Plans use -lock=false (the plan identity can only read the state) and -refresh=false:
+# the identity reads no data plane (no Key Vault secret value, no App Configuration key, no AKS
+# credential), so the plan shows the diff against the last state and not drift (the apply refreshes).
+# Terraform logs in with OIDC through the ARM_* variables; GUIDs, addresses and the name suffix are
+# masked in the logs and replaced in the job summary and the artifact (they are public in a public
+# repository).
 name: terraform-plan
 
 on:
@@ -38,9 +41,10 @@ jobs:
       TF_VAR_location: ${{ vars.LAB_LOCATION }}
       TF_VAR_github_owner: ${{ github.repository_owner }}
       TF_VAR_deploy_principal_id: ${{ vars.LAB_DEPLOY_PRINCIPAL_ID }}
-      TF_VAR_cluster_admin_principal_ids: ${{ vars.LAB_CLUSTER_ADMIN_PRINCIPAL_IDS }}
-      TF_VAR_app_deployer_principal_ids: ${{ vars.LAB_APP_DEPLOYER_PRINCIPAL_IDS || '[]' }}
-      TF_VAR_api_server_authorized_ip_ranges: ${{ vars.LAB_API_SERVER_AUTHORIZED_IP_RANGES }}
+      # Secrets, not variables: the logs of a public repository are public, and a secret is masked.
+      TF_VAR_cluster_admin_principal_ids: ${{ secrets.LAB_CLUSTER_ADMIN_PRINCIPAL_IDS }}
+      TF_VAR_app_deployer_principal_ids: ${{ secrets.LAB_APP_DEPLOYER_PRINCIPAL_IDS || '[]' }}
+      TF_VAR_api_server_authorized_ip_ranges: ${{ secrets.LAB_API_SERVER_AUTHORIZED_IP_RANGES }}
       TF_VAR_allow_api_server_from_anywhere: ${{ vars.LAB_ALLOW_API_SERVER_FROM_ANYWHERE || 'false' }}
       TF_VAR_enable_waf: ${{ vars.LAB_ENABLE_WAF || 'true' }}
     steps:
@@ -62,7 +66,7 @@ jobs:
           done
           if ((${#problems[@]} > 0)); then
             printf '::error::Repository variable problem: %s\n' "${problems[@]}"
-            echo "::error::Settings > Secrets and variables > Actions > Variables; names and values in docs/RUNBOOK.md (section 'Variáveis do GitHub')."
+            echo "::error::Settings > Secrets and variables > Actions (the lists of people and addresses are secrets, the rest variables); names and values in docs/RUNBOOK.md (section 'Variáveis do GitHub')."
             exit 1
           fi
           # Identifiers never reach the logs of a public repository.
@@ -70,6 +74,22 @@ jobs:
             echo "::add-mask::${!v}"
           done
           echo "::add-mask::$(printf '%s' "$ARM_SUBSCRIPTION_ID" | sha1sum | cut -c1-8)"
+
+      - name: Mask the addresses and the people of the operator in the logs
+        env:
+          API_RANGES: ${{ secrets.LAB_API_SERVER_AUTHORIZED_IP_RANGES }}
+          ADMIN_IDS: ${{ secrets.LAB_CLUSTER_ADMIN_PRINCIPAL_IDS }}
+          DEPLOYER_IDS: ${{ secrets.LAB_APP_DEPLOYER_PRINCIPAL_IDS }}
+        run: |
+          for list in "$API_RANGES" "$ADMIN_IDS" "$DEPLOYER_IDS"; do
+            [[ -n "$list" ]] || continue
+            items="$(jq -r '.[]' <<<"$list")"
+            while IFS= read -r item; do
+              [[ -n "$item" ]] || continue
+              echo "::add-mask::$item"
+              echo "::add-mask::${item%%/*}"
+            done <<<"$items"
+          done
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -83,14 +103,22 @@ jobs:
       - name: terraform init
         run: terraform -chdir=terraform/envs/lab init -input=false -lockfile=readonly -backend-config="storage_account_name=$TF_STATE_STORAGE_ACCOUNT"
 
-      - name: terraform plan (read-only, -lock=false)
-        run: terraform -chdir=terraform/envs/lab plan -lock=false -input=false -no-color -out=tfplan
+      - name: terraform plan (read-only, -refresh=false, -lock=false)
+        run: terraform -chdir=terraform/envs/lab plan -refresh=false -lock=false -input=false -no-color -out=tfplan
 
-      - name: Plan text to the job summary (identifiers replaced)
+      - name: Plan text to the job summary (identifiers and addresses replaced)
+        env:
+          API_RANGES: ${{ secrets.LAB_API_SERVER_AUTHORIZED_IP_RANGES }}
         run: |
           suffix="$(printf '%s' "$ARM_SUBSCRIPTION_ID" | sha1sum | cut -c1-8)"
-          terraform -chdir=terraform/envs/lab show -no-color tfplan |
-            sed -E -e 's/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<GUID>/g' -e "s/$suffix/<SUFFIX>/g" > plan.txt
+          text="$(terraform -chdir=terraform/envs/lab show -no-color tfplan |
+            sed -E -e 's/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<GUID>/g' -e "s/$suffix/<SUFFIX>/g")"
+          # The job summary and the artifact are not covered by the masks of the log.
+          while IFS= read -r cidr; do
+            text="${text//"$cidr"/<CIDR>}"
+            text="${text//"${cidr%%/*}"/<IP>}"
+          done < <(jq -r '.[]' <<<"$API_RANGES")
+          printf '%s\n' "$text" > plan.txt
           {
             echo "## terraform plan: terraform/envs/lab"
             echo '```'

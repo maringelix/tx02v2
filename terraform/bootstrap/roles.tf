@@ -18,15 +18,13 @@ locals {
     join(", ", local.apply_assignable_role_ids),
   )
 
-  # What a `terraform plan -refresh` of the lab really calls besides Reader (azurerm 5.9.0 source,
-  # docs/ARQUITETURA.md): AKS ListClusterUserCredentials, Key Vault GetSecret (it returns the
-  # value), App Configuration GetKeyValue and the store ListKeys. Least privileged roles for each.
+  # The plan identity runs on pull requests, in a public repository, and its output goes to a public
+  # job summary: it reads no data plane. `terraform plan -refresh=false` (the workflow) needs only the
+  # management plane (Reader, for the data sources) and the state. A refresh would read the Key Vault
+  # secret values, the App Configuration keys and the AKS credentials (docs/ARQUITETURA.md, ADR 14).
   plan_roles = {
-    "reader"                = { scope = local.lab_scope, role = "Reader" }
-    "aks-cluster-user"      = { scope = local.lab_scope, role = "Azure Kubernetes Service Cluster User Role" }
-    "keyvault-secrets-user" = { scope = local.lab_scope, role = "Key Vault Secrets User" }
-    "appconfig-data-reader" = { scope = local.lab_scope, role = "App Configuration Data Reader" }
-    "state-blob-reader"     = { scope = local.state_scope, role = "Storage Blob Data Reader" }
+    "reader"            = { scope = local.lab_scope, role = "Reader" }
+    "state-blob-reader" = { scope = local.state_scope, role = "Storage Blob Data Reader" }
   }
 
   apply_roles = {
@@ -47,28 +45,6 @@ resource "azurerm_role_assignment" "plan" {
   principal_id         = azurerm_user_assigned_identity.plan.principal_id
   principal_type       = "ServicePrincipal"
   description          = "tx02v2-gha-plan: ${each.key}"
-}
-
-# The refresh of azurerm_app_configuration lists the access keys and fails without this action;
-# no built-in read role has it. The keys are useless anyway: local auth is disabled on the store.
-resource "azurerm_role_definition" "plan_appconfig_list_keys" {
-  name        = "tx02v2-plan-appconfig-listkeys-${local.suffix}"
-  scope       = local.lab_scope
-  description = "tx02v2-gha-plan: list the (disabled) access keys of App Configuration stores, needed by the azurerm refresh."
-
-  permissions {
-    actions = ["Microsoft.AppConfiguration/configurationStores/ListKeys/action"]
-  }
-
-  assignable_scopes = [local.lab_scope]
-}
-
-resource "azurerm_role_assignment" "plan_appconfig_list_keys" {
-  scope              = local.lab_scope
-  role_definition_id = azurerm_role_definition.plan_appconfig_list_keys.role_definition_resource_id
-  principal_id       = azurerm_user_assigned_identity.plan.principal_id
-  principal_type     = "ServicePrincipal"
-  description        = "tx02v2-gha-plan: appconfig-list-keys"
 }
 
 # --- tx02v2-gha-apply: environment lab only (required reviewer) ---

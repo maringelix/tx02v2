@@ -98,7 +98,7 @@ REQUIRED_FILES=(
   docs/ARQUITETURA.md docs/PUBLICACAO.md docs/CUSTOS.md docs/LICOES_APRENDIDAS.md
   tools/versions.env tools/checksums.txt
   scripts/install-tools.sh scripts/update-tool-checksums.sh scripts/harness.sh scripts/repo-guardrails.sh scripts/leftovers.sh
-  scripts/destroy.sh scripts/tests/destroy-flow.sh scripts/tests/leftovers-flow.sh
+  scripts/destroy.sh scripts/tests/destroy-flow.sh scripts/tests/leftovers-flow.sh scripts/tests/local-preflight.sh
   scripts/lib/common.sh scripts/lib/tools.sh scripts/lib/azure.sh
   platform/install.sh platform/uninstall.sh platform/render-manifests.sh platform/versions.env
   platform/values/alb-controller.yaml platform/values/external-secrets.yaml
@@ -716,6 +716,13 @@ check_policy_identifiers() {
 # in terraform destroy (docs/GUARDRAILS.md, CUSTO-03).
 check_destroy_flow() {
   bash scripts/tests/destroy-flow.sh
+}
+
+# The pre-flight of scripts/local-lab.sh with a simulated docker, kind and ip: a machine whose Docker
+# CLI and provider disagree, whose network or route overlaps the lab or whose registry port is taken
+# is refused, and a lab of another state directory is never touched (docs/GUARDRAILS.md, LOC-06).
+check_local_preflight() {
+  bash scripts/tests/local-preflight.sh
 }
 
 # scripts/leftovers.sh with a simulated az: in a subscription that also holds other work only the lab's
@@ -1441,6 +1448,7 @@ register_checks() {
   register static policy-workflows check_policy_workflows
   register static policy-scripts check_policy_scripts
   register static destroy-flow check_destroy_flow
+  register static local-preflight check_local_preflight
   register static leftovers-flow check_leftovers_flow
   register static trivyignore-policy check_trivyignore_policy
   register static contract-platform check_contract_platform

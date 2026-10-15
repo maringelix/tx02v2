@@ -2,6 +2,7 @@
 # The local lab (docs/LAB_LOCAL.md): the Azure lab of tx02v2 emulated on the Docker daemon of this
 # machine, with the full platform of the v1 lab on top. Nothing here touches Azure.
 # usage: scripts/local-lab.sh <command>
+#   preflight          checks the machine (what up checks first); creates nothing
 #   up [--infra-only]  terraform apply of terraform/envs/local, then platform/local/install.sh
 #   down               platform/local/uninstall.sh, terraform destroy, scripts/leftovers-local.sh
 #   check              platform/local/check.sh (probes of every platform component)
@@ -124,8 +125,9 @@ cidrs_overlap() {
 
 # preflight -> checks of the machine, before anything is created.
 preflight() {
-  local subnet="${TF_VAR_subnet_cidr:-10.250.0.0/24}" port="${TF_VAR_registry_host_port:-5001}"
+  local subnet="${TF_VAR_subnet_cidr:-10.251.0.0/24}" port="${TF_VAR_registry_host_port:-5002}"
   local socket="${TF_VAR_docker_host:-unix:///var/run/docker.sock}" cli_id provider_id name nets net route
+  local -a network_ids=()
 
   # The Terraform provider and the kind CLI must drive the daemon you are looking at.
   cli_id="$(docker info --format '{{.ID}}' 2>/dev/null)" || die "the Docker daemon is not reachable"
@@ -134,16 +136,20 @@ preflight() {
   [[ "$cli_id" == "$provider_id" ]] ||
     die "the Docker CLI (DOCKER_HOST=${DOCKER_HOST:-unset}, context $(docker context show 2>/dev/null)) and the Terraform provider ($socket) talk to different daemons: set TF_VAR_docker_host to the socket the CLI uses"
 
-  # The lab network (default 10.250.0.0/24) must not overlap another Docker network or a route of
-  # the machine (a VPN or the LAN): the containers would be unreachable or would shadow it.
+  # The lab network (subnet_cidr of terraform/envs/local) must not overlap another Docker network or a
+  # route of the machine (a VPN or the LAN): the containers would be unreachable or would shadow it.
+  mapfile -t network_ids < <(docker network ls -q)
   while read -r name nets; do
+    if [[ "$name" == "$NETWORK" ]]; then
+      die "the network $NETWORK of an earlier lab is still on the daemon: run scripts/local-lab.sh down, or docker network rm $NETWORK"
+    fi
     for net in $nets; do
       [[ "$net" =~ ^[0-9.]+/[0-9]+$ ]] || continue
       if cidrs_overlap "$subnet" "$net"; then
         die "the lab network $subnet overlaps the Docker network $name ($net): set TF_VAR_subnet_cidr to another private /24"
       fi
     done
-  done < <(docker network inspect --format '{{.Name}} {{range .IPAM.Config}}{{.Subnet}} {{end}}' $(docker network ls -q) 2>/dev/null)
+  done < <(docker network inspect --format '{{.Name}} {{range .IPAM.Config}}{{.Subnet}} {{end}}' "${network_ids[@]}" 2>/dev/null)
   if command -v ip >/dev/null 2>&1; then
     while read -r route _; do
       [[ "$route" =~ ^[0-9.]+/([0-9]+)$ && "${BASH_REMATCH[1]}" != 0 ]] || continue
@@ -159,14 +165,21 @@ preflight() {
   fi
 }
 
-cmd_up() {
-  local infra_only=0
-  [[ "${1:-}" == --infra-only ]] && infra_only=1
-  require_cmd terraform kind docker kubectl
+# cmd_preflight -> the checks that `up` makes before it creates anything, on their own.
+cmd_preflight() {
+  require_cmd kind docker
   docker info >/dev/null 2>&1 || die "the Docker daemon is not reachable"
   require_own_lab up
   # A lab of this state directory is only updated; the machine is checked before a new one.
   lab_present || preflight
+  log "pre-flight: ok"
+}
+
+cmd_up() {
+  local infra_only=0
+  [[ "${1:-}" == --infra-only ]] && infra_only=1
+  require_cmd terraform kind docker kubectl
+  cmd_preflight
   tf_init
   log "terraform apply (terraform/envs/local)"
   terraform -chdir="$TF_DIR" apply -input=false -auto-approve -no-color
@@ -237,6 +250,7 @@ main() {
   local cmd="${1:-}"
   shift || true
   case "$cmd" in
+    preflight) cmd_preflight ;;
     up) cmd_up "$@" ;;
     down) cmd_down ;;
     check) cmd_check ;;
@@ -246,7 +260,7 @@ main() {
       printf '%s\n' "$KUBECONFIG"
       ;;
     status) cmd_status ;;
-    *) die "usage: $0 up [--infra-only] | down | check | e2e | kubeconfig | status" ;;
+    *) die "usage: $0 preflight | up [--infra-only] | down | check | e2e | kubeconfig | status" ;;
   esac
 }
 

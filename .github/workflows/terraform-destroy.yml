@@ -93,7 +93,7 @@ jobs:
         run: |
           for list in "$API_RANGES" "$ADMIN_IDS" "$DEPLOYER_IDS"; do
             [[ -n "$list" ]] || continue
-            items="$(jq -er '.[]' <<<"$list")"
+            items="$(jq -r '.[]' <<<"$list")"
             while IFS= read -r item; do
               [[ -n "$item" ]] || continue
               echo "::add-mask::$item"

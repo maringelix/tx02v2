@@ -76,7 +76,7 @@ jobs:
         run: |
           for list in "$API_RANGES" "$ADMIN_IDS" "$DEPLOYER_IDS"; do
             [[ -n "$list" ]] || continue
-            items="$(jq -er '.[]' <<<"$list")"
+            items="$(jq -r '.[]' <<<"$list")"
             while IFS= read -r item; do
               [[ -n "$item" ]] || continue
               echo "::add-mask::$item"
@@ -113,7 +113,7 @@ jobs:
           while IFS= read -r cidr; do
             text="${text//"$cidr"/<CIDR>}"
             text="${text//"${cidr%%/*}"/<IP>}"
-          done < <(jq -er '.[]' <<<"$API_RANGES")
+          done < <(jq -r '.[]' <<<"$API_RANGES")
           {
             echo "## terraform apply: terraform/envs/lab"
             echo '```'

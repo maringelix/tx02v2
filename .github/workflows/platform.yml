@@ -62,7 +62,7 @@ jobs:
       - name: Mask the people of the operator in the logs
         run: |
           if [[ "$APP_DEPLOYER_PRINCIPAL_IDS" != "[]" ]]; then
-            items="$(jq -er '.[]' <<<"$APP_DEPLOYER_PRINCIPAL_IDS")"
+            items="$(jq -r '.[]' <<<"$APP_DEPLOYER_PRINCIPAL_IDS")"
             while IFS= read -r item; do
               [[ -n "$item" ]] || continue
               echo "::add-mask::$item"

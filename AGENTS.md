@@ -9,8 +9,9 @@ is the source of truth. The full rule list (pt-BR) is [docs/GUARDRAILS.md](docs/
   `tx01v2` + `dx01v2` on AWS, `tx02v2` + `dx02v2` on Azure, `tx03v2` + `dx03v2` on Google Cloud).
 - It must stay healthy without any cloud account: every claim is backed by the local harness or
   carries a status label (`verified in CI`, `verified locally`, `not run in the cloud (v2)`, `planned`).
-- Current status: the harness (`HARNESS_STRICT=1 make verify`) passes locally in a Linux container
-  (38 checks with the local lab) and in CI (jobs `static`, `test`; 32 checks before the local lab).
+- Current status: `main` has the harness (`HARNESS_STRICT=1 make verify`) verified in CI (jobs
+  `static`, `test`; 32 checks before the local lab) and locally with the local lab. The R4 cloud full
+  profile in this branch awaits its PR CI checks.
   **Nothing of v2 has run in Azure** (bootstrap, apply, plan, platform and destroy are
   `not run in the cloud (v2)`).
 - The local lab ([docs/LAB_LOCAL.md](docs/LAB_LOCAL.md)) rebuilds the whole v1 platform on Docker:
@@ -19,7 +20,7 @@ is the source of truth. The full rule list (pt-BR) is [docs/GUARDRAILS.md](docs/
   Prometheus/Alertmanager/Grafana, Loki/Alloy, Tempo and the OpenTelemetry Collector, Argo CD,
   Gatekeeper, Trivy Operator, Velero, Chaos Mesh). `make e2e` proves it with 34 probes (CI job `e2e`). It is not cloud-mutating: agents may run it, one heavy run at a time (8 GB of Docker
   memory for `full`, 7 GB with `LOCAL_SIZE=small`).
-- The interface with `dx02v2` is [docs/CONTRATO.md](docs/CONTRATO.md) (contract v2, owned here; the
+- The interface with `dx02v2` is [docs/CONTRATO.md](docs/CONTRATO.md) (contract v3, owned here; the
   local lab has its own local contract, `lab-system/lab-contract`).
 
 ## 2. Non-negotiable rules

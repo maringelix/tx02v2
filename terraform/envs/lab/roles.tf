@@ -54,6 +54,13 @@ locals {
         principal_id   = azurerm_user_assigned_identity.otel.principal_id
         principal_type = "ServicePrincipal"
       }
+      # Velero writes backups only to its private Blob container; no account keys or account-wide role.
+      "velero-blob-data-contributor" = {
+        role           = "Storage Blob Data Contributor"
+        scope          = module.velero.container_id
+        principal_id   = module.velero.identity_principal_id
+        principal_type = "ServicePrincipal"
+      }
     },
     # dx02v2-gha-deploy, a managed identity.
     {

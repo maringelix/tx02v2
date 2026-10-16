@@ -171,7 +171,10 @@ Then, from the root of your `tx02v2` clone:
 3. **Run**: from the Actions tab, `terraform-plan`, `terraform-apply` and `platform` (each one waits
    for your approval of the `lab` environment), the app deploy from your `dx02v2`, the smoke test,
    then `terraform-destroy`, which ends with the leftover check: [docs/RUNBOOK.md](docs/RUNBOOK.md),
-   sections 4 to 9. The workflows take `github_owner` from the owner of the repository.
+   sections 4 to 9. The workflows take `github_owner` from the owner of the repository. For the full
+   platform profile, set `LAB_NODE_VM_SIZE=Standard_D2as_v5` and `LAB_NODE_COUNT=2` before plan and
+   apply; keep these values through destroy. The workflows pass them to plan/apply/destroy, while
+   unset values preserve the cheaper core defaults.
 
 Your fork is public, and so are its workflow logs. The workflows mask the tenant, subscription and
 client IDs ([docs/GUARDRAILS.md](docs/GUARDRAILS.md), CI-07); never paste credentials or those IDs

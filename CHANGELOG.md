@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Azure profile `full` with 15 pinned charts, ambient Istio, observability, Argo CD GitOps, Gatekeeper,
+  Trivy, Velero on Azure Blob through Workload ID with 35-day retention, and Chaos Mesh. The platform
+  workflow keeps `core` as its default.
+- Terraform Velero module with keyless StorageV2, a private Blob container, container-scoped data
+  role and federated ServiceAccount identity. `LAB_NODE_VM_SIZE` and `LAB_NODE_COUNT` let cloud
+  workflows size the cluster for the full profile while preserving core defaults.
+
+### Changed
+
+- Cloud contract version 3 adds ambient and Gatekeeper namespace labels, GitOps branch and backup
+  semantics. The 15 App Configuration keys and the separate local contract v2 are unchanged.
+
 ### Security
 
 - The cloud path no longer trusts anyone who registers a deleted account name, it works for the

@@ -28,6 +28,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$HERE/../scripts/lib/common.sh"
 # shellcheck source=scripts/lib/azure.sh
 source "$REPO_ROOT/scripts/lib/azure.sh"
+# shellcheck source=scripts/lib/platform.sh
+source "$REPO_ROOT/scripts/lib/platform.sh"
 export PATH="$REPO_ROOT/.tools/bin:$PATH"
 
 ALB_CHART_OCI="oci://mcr.microsoft.com/application-lb/charts/alb-controller"
@@ -40,6 +42,21 @@ GATEWAY_CLASS=azure-alb-external
 SECRET_STORE=azure-key-vault
 GATEWAY_CLASS_WAIT_SECONDS="${GATEWAY_CLASS_WAIT_SECONDS:-300}"
 WORK_DIR=""
+PROFILE=core
+OWNER=""
+GATEWAY_API_RELEASES=https://github.com/kubernetes-sigs/gateway-api/releases/download
+PLATFORM_VAULT=""
+PLATFORM_DEPLOYERS=""
+ACR_LOGIN_SERVER=""
+VELERO_CLIENT_ID=""
+VELERO_STORAGE_ACCOUNT_URI=""
+AZURE_SUBSCRIPTION_ID=""
+AKS_NODE_RESOURCE_GROUP=""
+
+usage() {
+  echo "usage: $0 [--profile core|full] [--github-owner OWNER]" >&2
+  exit 2
+}
 
 cleanup() {
   [[ -z "$WORK_DIR" ]] || rm -rf "$WORK_DIR"
@@ -202,14 +219,181 @@ apply_manifests() {
   die "could not apply platform/manifests"
 }
 
+# apply_full FILE -> applies one full-profile manifest after its CRDs exist.
+apply_full() {
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    if "$HERE/render-manifests.sh" "$PLATFORM_VAULT" "$PLATFORM_DEPLOYERS" \
+      --full "$OWNER" --acr-login-server "$ACR_LOGIN_SERVER" --only "$1" | kubectl apply -f - >/dev/null; then
+      return 0
+    fi
+    log "kubectl apply of platform/manifests/$1 failed (attempt $attempt/5); retrying in 15 s"
+    sleep 15
+  done
+  die "could not apply platform/manifests/$1"
+}
+
+# install_chart CHART [HELM_ARG...] -> installs one pinned chart from platform/full/charts.txt.
+# Install-time values are rendered to the temporary work directory; no cloud ID enters the repo.
+install_chart() {
+  local chart=$1 repo_key version_key sha_key name release ns values tgz f out content
+  local -a files=() args=()
+  shift
+  read -r repo_key version_key sha_key name release ns values <<<"$(chart_entry "$chart")"
+  IFS=, read -ra files <<<"$values"
+  mkdir -p "$WORK_DIR/values/$chart"
+  for f in "${files[@]}"; do
+    [[ -f "$HERE/$f" ]] || die "platform/full/charts.txt: platform/$f does not exist"
+    out="$WORK_DIR/values/$chart/$(printf '%02d' "${#args[@]}")-$(basename "$f")"
+    content="$(<"$HERE/$f")"
+    content="${content//__VELERO_CLIENT_ID__/$VELERO_CLIENT_ID}"
+    content="${content//__VELERO_STORAGE_ACCOUNT_URI__/$VELERO_STORAGE_ACCOUNT_URI}"
+    content="${content//__AZURE_SUBSCRIPTION_ID__/$AZURE_SUBSCRIPTION_ID}"
+    content="${content//__AKS_NODE_RESOURCE_GROUP__/$AKS_NODE_RESOURCE_GROUP}"
+    content="${content//__S3_BUCKET__/tx02v2-lab-velero}"
+    content="${content//__S3_ENDPOINT__/$VELERO_STORAGE_ACCOUNT_URI}"
+    if [[ "$chart" == velero && "$content" =~ __[A-Z][A-Z0-9_]*__ ]]; then
+      die "unresolved install-time placeholder ${BASH_REMATCH[0]} in platform/$f"
+    fi
+    printf '%s\n' "$content" >"$out"
+    args+=(--values "$out")
+  done
+  tgz="$(pull_chart "$WORK_DIR/charts" "${!repo_key}" "$name" "${!version_key}" "${!sha_key}")"
+  log "installing $release ($name ${!version_key}, SHA256 verified) in $ns"
+  helm upgrade --install "$release" "$tgz" --namespace "$ns" --create-namespace "${args[@]}" "$@" \
+    --wait=watcher --rollback-on-failure --timeout 10m >/dev/null
+}
+
+install_istio() {
+  local asset="$WORK_DIR/gateway-api-$GATEWAY_CRDS_VERSION.yaml" got
+  download "$GATEWAY_API_RELEASES/$GATEWAY_CRDS_VERSION/standard-install.yaml" "$asset"
+  got="$(sha256_of "$asset")"
+  [[ "$got" == "$GATEWAY_CRDS_SHA256" ]] || die "refusing Gateway API $GATEWAY_CRDS_VERSION: SHA256 differs from platform/local/versions.env"
+  kubectl apply --server-side --force-conflicts -f "$asset" >/dev/null
+  kubectl wait --for=condition=Established --timeout=120s \
+    crd/gatewayclasses.gateway.networking.k8s.io crd/gateways.gateway.networking.k8s.io crd/httproutes.gateway.networking.k8s.io >/dev/null
+  install_chart base
+  install_chart istiod
+  install_chart cni
+  install_chart ztunnel
+  retry 60 2 kubectl get gatewayclass istio >/dev/null 2>&1 || die "istiod did not create the GatewayClass istio"
+}
+
+install_observability() {
+  local hook="${SLACK_WEBHOOK_URL:-}"
+  local -a slack=()
+  if ! kubectl -n monitoring get secret grafana-admin >/dev/null 2>&1; then
+    openssl rand -hex 16 | tr -d '\n' | kubectl -n monitoring create secret generic grafana-admin \
+      --from-literal=admin-user=admin --from-file=admin-password=/dev/stdin >/dev/null
+  fi
+  if [[ -n "$hook" ]]; then
+    [[ "$hook" =~ ^https://[A-Za-z0-9.-]+/[A-Za-z0-9/_-]+$ ]] || die "SLACK_WEBHOOK_URL must be an https Slack incoming webhook"
+    printf '%s' "$hook" | kubectl -n monitoring create secret generic alertmanager-slack \
+      --from-file=webhook-url=/dev/stdin --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+    slack=(--values "$HERE/values/full/kube-prometheus-stack-slack.yaml")
+  fi
+  if ! helm -n monitoring status kube-prometheus-stack >/dev/null 2>&1; then
+    install_chart kube-prometheus-stack "${slack[@]}" --set defaultRules.create=false
+  fi
+  kubectl -n monitoring rollout status deployment/kube-prometheus-stack-operator --timeout=300s >/dev/null
+  install_chart kube-prometheus-stack "${slack[@]}"
+  retry 30 5 kubectl -n monitoring get statefulset prometheus-kube-prometheus-stack-prometheus alertmanager-kube-prometheus-stack-alertmanager >/dev/null 2>&1 ||
+    die "the Prometheus Operator did not create Prometheus and Alertmanager"
+  kubectl -n monitoring rollout status statefulset/prometheus-kube-prometheus-stack-prometheus --timeout=300s >/dev/null
+  kubectl -n monitoring rollout status statefulset/alertmanager-kube-prometheus-stack-alertmanager --timeout=300s >/dev/null
+  install_chart loki
+  install_chart alloy
+  install_chart tempo
+  install_chart opentelemetry-collector
+  apply_full full/tracing.yaml
+}
+
+install_gitops() {
+  install_chart argo-cd
+  kubectl wait --for=condition=Established --timeout=120s crd/applications.argoproj.io crd/appprojects.argoproj.io >/dev/null
+  apply_full full/argocd-platform.yaml
+  apply_full full/rbac-argocd-deployer.yaml
+}
+
+install_policies() {
+  local kind f repos="$WORK_DIR/allowed-repos.yaml"
+  install_chart gatekeeper
+  retry 10 6 kubectl apply -f "$HERE/local/policies/templates/" >/dev/null || die "could not apply Gatekeeper ConstraintTemplates"
+  while read -r kind; do
+    retry 30 2 kubectl get crd "${kind,,}.constraints.gatekeeper.sh" >/dev/null 2>&1 || die "Gatekeeper did not create the CRD of $kind"
+    kubectl wait --for=condition=Established "crd/${kind,,}.constraints.gatekeeper.sh" --timeout=60s >/dev/null
+  done < <(sed -n 's/^        kind: \(Lab[A-Za-z]*\)$/\1/p' "$HERE"/local/policies/templates/*.yaml)
+  for f in "$HERE"/local/policies/constraints/*.yaml; do
+    [[ "$(basename "$f")" != allowed-repos.yaml ]] || continue
+    retry 10 6 kubectl apply -f "$f" >/dev/null || die "could not apply Gatekeeper constraint $(basename "$f")"
+  done
+  sed "s|__ACR_LOGIN_SERVER__|$ACR_LOGIN_SERVER|g" "$HERE/full/policies/constraints/allowed-repos.yaml" >"$repos"
+  retry 10 6 kubectl apply -f "$repos" >/dev/null || die "could not apply the Gatekeeper constraint allowed-repos"
+}
+
+install_backup() {
+  install_chart velero
+  # shellcheck disable=SC2016 # expanded by the inner bash
+  retry 30 5 bash -c '[[ "$(kubectl -n velero get backupstoragelocation default -o jsonpath="{.status.phase}")" == Available ]]' ||
+    die "Velero: the Blob backup location is not Available (check the Workload Identity and container-scoped role assignment)"
+}
+
+install_full() {
+  local rg=$1 cluster=$2 sub storage_name storage_endpoint value
+  require_cmd openssl curl
+  load_pins "$HERE/local/versions.env"
+  sub="$(subscription_id)" || die "cannot read the active Azure subscription ID"
+  AZURE_SUBSCRIPTION_ID="$sub"
+  AKS_NODE_RESOURCE_GROUP="$(az aks show --resource-group "$rg" --name "$cluster" --query nodeResourceGroup --output tsv)" ||
+    die "cannot read the AKS node resource group for the Azure Workload Identity plugin"
+  [[ "$AKS_NODE_RESOURCE_GROUP" =~ ^[A-Za-z0-9._()-]{1,90}$ ]] || die "AKS returned an invalid node resource group name"
+  VELERO_CLIENT_ID="$(identity_client_id "$rg" "$LAB_NAME-velero")"
+  storage_name="${LAB_NAME//-/}$(lab_suffix "$sub")velero"
+  storage_endpoint="$(az storage account show --resource-group "$rg" --name "$storage_name" --query primaryEndpoints.blob --output tsv)" ||
+    die "cannot read the Blob endpoint of $storage_name"
+  [[ "$storage_endpoint" =~ ^https://[A-Za-z0-9.-]+/ ]] || die "the Storage account returned an invalid Blob endpoint"
+  VELERO_STORAGE_ACCOUNT_URI="${storage_endpoint%/}"
+  ACR_LOGIN_SERVER="$(contract acr/login-server)"
+  [[ "$ACR_LOGIN_SERVER" =~ ^[a-z0-9]{5,50}\.azurecr\.io$ ]] || die "contract key acr/login-server is not an ACR login server"
+  for value in "$AZURE_SUBSCRIPTION_ID" "$AKS_NODE_RESOURCE_GROUP" "$VELERO_CLIENT_ID" "$VELERO_STORAGE_ACCOUNT_URI"; do mask "$value"; done
+
+  apply_full full/namespaces.yaml
+  install_istio
+  install_chart cert-manager
+  install_observability
+  install_gitops
+  install_policies
+  install_chart trivy-operator
+  install_backup
+  install_chart chaos-mesh
+  log "profile full ready: $(helm list --all-namespaces --short | sort | tr '\n' ' ')"
+}
+
 main() {
-  (($# == 0)) || die "usage: $0 (configuration through environment variables, see the header)"
+  while (($# > 0)); do
+    case "$1" in
+      --profile)
+        [[ "${2:-}" == core || "${2:-}" == full ]] || usage
+        PROFILE=$2
+        shift 2
+        ;;
+      --github-owner)
+        [[ "${2:-}" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,38})$ ]] || usage
+        OWNER=$2
+        shift 2
+        ;;
+      *) usage ;;
+    esac
+  done
+  [[ "$PROFILE" == core || -n "$OWNER" ]] || die "profile full needs --github-owner (the GitHub user or organization of your forks)"
   local rg cluster vault deployer store tenant alb_client eso_client otel_client traces id deployers extra
   require_cmd az kubectl helm kubelogin
   require_az_login
   load_platform_versions
   WORK_DIR="$(mktemp -d)"
   trap cleanup EXIT
+  mkdir -p "$WORK_DIR/helm/config" "$WORK_DIR/helm/cache" "$WORK_DIR/helm/data"
+  export HELM_CONFIG_HOME="$WORK_DIR/helm/config" HELM_CACHE_HOME="$WORK_DIR/helm/cache" HELM_DATA_HOME="$WORK_DIR/helm/data"
 
   load_contract
   rg="$(contract resource-group)"
@@ -232,6 +416,8 @@ main() {
     mask "$id"
     deployers+=",$id"
   done <<<"$extra"
+  PLATFORM_VAULT="$vault"
+  PLATFORM_DEPLOYERS="$deployers"
   tenant="$(tenant_id)" || die "cannot read the tenant of the Azure CLI session"
   mask "$tenant"
   alb_client="$(identity_client_id "$rg" "$LAB_NAME-alb")"
@@ -257,6 +443,9 @@ main() {
   # Ready means ESO reached Key Vault with the Workload ID token of tx02v2-lab-eso.
   kubectl wait --for=condition=Ready "clustersecretstore/$store" --timeout=180s
   log "platform ready: GatewayClass $GATEWAY_CLASS, ClusterSecretStore $store, namespace dx02v2, OTLP endpoint opentelemetry-collector.$OTEL_NAMESPACE.svc:4318"
+  if [[ "$PROFILE" == full ]]; then
+    install_full "$rg" "$cluster"
+  fi
 }
 
 main "$@"

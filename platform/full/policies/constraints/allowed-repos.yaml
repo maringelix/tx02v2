@@ -1,0 +1,19 @@
+# The cloud twin of platform/local/policies/constraints/allowed-repos.yaml (same template, selector,
+# and deny): app images must come from this fork's ACR repository. The local registry and local Istio
+# gateways do not exist here. The renderer substitutes the contract ACR host.
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: LabAllowedRepos
+metadata:
+  name: allowed-repos
+spec:
+  enforcementAction: deny
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: [Pod]
+    namespaceSelector:
+      matchLabels:
+        policy.lab/enforce: "true"
+  parameters:
+    repos:
+      - "__ACR_LOGIN_SERVER__/dx02v2/"

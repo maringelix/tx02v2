@@ -1,0 +1,42 @@
+variable "name" {
+  description = "Prefix of the lab resources, for example tx02v2-lab."
+  type        = string
+}
+
+variable "storage_account_name" {
+  description = "Globally unique lowercase StorageV2 account name (3-24 alphanumeric characters)."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-z0-9]{3,24}$", var.storage_account_name))
+    error_message = "The Velero storage account name must contain 3-24 lowercase letters or digits."
+  }
+}
+
+variable "container_name" {
+  description = "Private Blob container for Kubernetes resource backups."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-z0-9-]{3,63}$", var.container_name))
+    error_message = "The Velero container name must be 3-63 lowercase letters, digits or hyphens."
+  }
+}
+
+variable "location" {
+  type = string
+}
+
+variable "resource_group_name" {
+  type = string
+}
+
+variable "oidc_issuer_url" {
+  description = "OIDC issuer URL of the AKS cluster for the Velero Workload Identity."
+  type        = string
+}
+
+variable "tags" {
+  description = "Contract tags for resources that support Azure tags."
+  type        = map(string)
+}

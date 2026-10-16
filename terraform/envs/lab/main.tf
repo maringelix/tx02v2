@@ -164,3 +164,15 @@ module "appconfig" {
   keys                = local.contract_keys
   tags                = local.tags
 }
+
+module "velero" {
+  source = "../../modules/velero"
+
+  name                 = local.name
+  storage_account_name = "${replace(local.name, "-", "")}${local.suffix}velero"
+  container_name       = "tx02v2-lab-velero"
+  location             = var.location
+  resource_group_name  = data.azurerm_resource_group.lab.name
+  oidc_issuer_url      = module.aks.oidc_issuer_url
+  tags                 = local.tags
+}

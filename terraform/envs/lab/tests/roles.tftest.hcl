@@ -53,6 +53,30 @@ override_resource {
 }
 
 override_resource {
+  target = module.velero.azurerm_user_assigned_identity.velero
+  values = {
+    id           = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ManagedIdentity/userAssignedIdentities/tx02v2-lab-velero"
+    principal_id = "33333333-3333-3333-3333-333333333333"
+    client_id    = "44444444-4444-4444-4444-444444444444"
+  }
+}
+
+override_resource {
+  target = module.velero.azurerm_storage_account.this
+  values = {
+    id   = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.Storage/storageAccounts/tx02v2labb602d594velero"
+    name = "tx02v2labb602d594velero"
+  }
+}
+
+override_resource {
+  target = module.velero.azurerm_storage_container.backups
+  values = {
+    id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.Storage/storageAccounts/tx02v2labb602d594velero/blobServices/default/containers/tx02v2-lab-velero"
+  }
+}
+
+override_resource {
   target = azurerm_user_assigned_identity.kubelet
   values = {
     id           = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ManagedIdentity/userAssignedIdentities/tx02v2-lab-kubelet"
@@ -114,6 +138,7 @@ run "the_lab_assigns_exactly_the_abac_roles" {
       "alb-agc-configuration-manager"                                      = "fbc52c3f-28ad-4303-a892-8a056630b8f1 ffffffff-ffff-ffff-ffff-ffffffffffff /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab"
       "alb-agc-subnet-network-contributor"                                 = "4d97b98b-1d4f-4787-a291-c67834d212e7 ffffffff-ffff-ffff-ffff-ffffffffffff /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.Network/virtualNetworks/tx02v2-lab-vnet/subnets/agc"
       "otel-monitoring-metrics-publisher"                                  = "3913510d-42f4-4e42-8a64-420c390055eb bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.Insights/components/tx02v2-lab-traces"
+      "velero-blob-data-contributor"                                       = "ba92f5b4-2d11-453d-a403-e96b0029c9fe 33333333-3333-3333-3333-333333333333 /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.Storage/storageAccounts/tx02v2labb602d594velero/blobServices/default/containers/tx02v2-lab-velero"
       "cluster-admin-11111111-1111-1111-1111-111111111111"                 = "b1ff04bb-8a4e-4dc4-8eb5-8693973ce19b 11111111-1111-1111-1111-111111111111 /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ContainerService/managedClusters/tx02v2-lab"
       "cluster-admin-22222222-2222-2222-2222-222222222222"                 = "b1ff04bb-8a4e-4dc4-8eb5-8693973ce19b 22222222-2222-2222-2222-222222222222 /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ContainerService/managedClusters/tx02v2-lab"
       "app-deployer-acr-push-eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"         = "8311e382-0749-4cb8-b61a-304f252e45ec eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ContainerRegistry/registries/tx02v2labb602d594"
@@ -179,8 +204,8 @@ run "app_deployers_get_the_roles_of_the_deploy_identity" {
   }
 
   assert {
-    condition     = length(azurerm_role_assignment.lab) == 16
-    error_message = "Lab role assignments: kubelet 1, deploy identity 3, ESO 1, ALB 2, Collector 1, cluster admins 2 and 3 per app deployer (2)."
+    condition     = length(azurerm_role_assignment.lab) == 17
+    error_message = "Lab role assignments: kubelet 1, deploy identity 3, ESO 1, ALB 2, Collector 1, Velero 1, cluster admins 2 and 3 per app deployer (2)."
   }
 }
 
@@ -216,8 +241,8 @@ run "no_app_deployers_assign_nothing_extra" {
   }
 
   assert {
-    condition     = length(azurerm_role_assignment.lab) == 10
-    error_message = "Without app deployers the lab assigns 10 roles after the cluster exists (kubelet 1, deploy 3, ESO 1, ALB 2, Collector 1, admins 2)."
+    condition     = length(azurerm_role_assignment.lab) == 11
+    error_message = "Without app deployers the lab assigns 11 roles after the cluster exists (kubelet 1, deploy 3, ESO 1, ALB 2, Collector 1, Velero 1, admins 2)."
   }
 }
 
@@ -256,18 +281,40 @@ run "controller_identities_are_federated_with_the_cluster" {
   }
 
   assert {
-    condition     = [azurerm_user_assigned_identity.aks.name, azurerm_user_assigned_identity.kubelet.name, azurerm_user_assigned_identity.eso.name, azurerm_user_assigned_identity.alb.name, azurerm_user_assigned_identity.otel.name] == ["tx02v2-lab-aks", "tx02v2-lab-kubelet", "tx02v2-lab-eso", "tx02v2-lab-alb", "tx02v2-lab-otel"]
+    condition = (
+      module.velero.federated_identity_id == module.velero.identity_id &&
+      module.velero.federated_subject == "system:serviceaccount:velero:velero" &&
+      module.velero.federated_issuer == module.aks.oidc_issuer_url &&
+      module.velero.federated_audiences == tolist(["api://AzureADTokenExchange"])
+    )
+    error_message = "tx02v2-lab-velero must trust only the velero/velero service account from the AKS OIDC issuer."
+  }
+
+  assert {
+    condition = (
+      module.velero.storage_security.shared_access_key_enabled == false &&
+      module.velero.storage_security.anonymous_access == false &&
+      module.velero.storage_security.public_network_access == "Enabled" &&
+      module.velero.storage_security.container_access_type == "private" &&
+      module.velero.storage_security.backup_expiration_days == 35 &&
+      azurerm_role_assignment.lab["velero-blob-data-contributor"].scope == module.velero.container_id
+    )
+    error_message = "Velero uses private keyless Blob storage with 35-day expiry and a container-only data role."
+  }
+
+  assert {
+    condition     = [azurerm_user_assigned_identity.aks.name, azurerm_user_assigned_identity.kubelet.name, azurerm_user_assigned_identity.eso.name, azurerm_user_assigned_identity.alb.name, azurerm_user_assigned_identity.otel.name, module.velero.identity_name] == ["tx02v2-lab-aks", "tx02v2-lab-kubelet", "tx02v2-lab-eso", "tx02v2-lab-alb", "tx02v2-lab-otel", "tx02v2-lab-velero"]
     error_message = "Lab identity names follow the contract."
   }
 
   assert {
-    condition     = output.eso_identity_client_id == "55555555-5555-5555-5555-555555555555" && output.alb_identity_client_id == "66666666-6666-6666-6666-666666666666" && output.otel_identity_client_id == "99999999-9999-9999-9999-999999999999"
+    condition     = output.eso_identity_client_id == "55555555-5555-5555-5555-555555555555" && output.alb_identity_client_id == "66666666-6666-6666-6666-666666666666" && output.otel_identity_client_id == "99999999-9999-9999-9999-999999999999" && module.velero.identity_client_id == "44444444-4444-4444-4444-444444444444"
     error_message = "platform/install.sh needs the client IDs of the controller identities and of the Collector."
   }
 
   assert {
     condition = alltrue([
-      for t in [azurerm_user_assigned_identity.aks.tags, azurerm_user_assigned_identity.kubelet.tags, azurerm_user_assigned_identity.eso.tags, azurerm_user_assigned_identity.alb.tags, azurerm_user_assigned_identity.otel.tags] :
+      for t in [azurerm_user_assigned_identity.aks.tags, azurerm_user_assigned_identity.kubelet.tags, azurerm_user_assigned_identity.eso.tags, azurerm_user_assigned_identity.alb.tags, azurerm_user_assigned_identity.otel.tags, module.velero.identity_tags] :
       t == tomap({ Project = "tx02v2", Environment = "lab", ManagedBy = "terraform", Repository = "maringelix/tx02v2" })
     ])
     error_message = "Lab identities carry the contract tags."

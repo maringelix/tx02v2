@@ -1,9 +1,10 @@
 # Custos do lab
 
 Estimativa do custo por hora, por dia e de um mês esquecido com os padrões do lab em `eastus2`, para
-decidir antes de criar qualquer coisa. Todos os valores são **preços de referência (Azure Retail
-Prices API, 2026-10-11) — confira a calculadora oficial** antes de cada rodada: preços de tabela
-pay-as-you-go em US$, sem impostos, sem transferência de dados e sem créditos. O budget do bootstrap
+decidir antes de criar qualquer coisa. Os valores da tabela base são **preços de referência (Azure
+Retail Prices API, 2026-10-11); o acréscimo do perfil full usa a consulta de 2026-10-16** — confira a
+calculadora oficial antes de cada rodada: preços de tabela pay-as-you-go em US$, sem impostos, sem
+transferência de dados e sem créditos. O budget do bootstrap
 usa a moeda de faturamento da assinatura. Nada disto foi medido numa fatura real: a v2 nunca rodou
 em nuvem (`não executado em nuvem (v2)`).
 
@@ -90,6 +91,19 @@ assinatura e região:
 `az vm list-skus --location eastus2 --size Standard_D2als_v6 --all --output table` (coluna
 Restrictions) e `az vm list-usage --location eastus2 --output table` (cota de vCPU da família). O
 lab precisa de 4 vCPUs da família, 6 durante um upgrade (surge de 1 nó) ou com o autoscaler em 3.
+
+## Custo adicional do perfil full
+
+O perfil full precisa de mais memória que o perfil core. Para os valores de referência de 2026-10-16, o runbook usa dois nós `Standard_D2as_v5` (2 vCPU, 8 GiB), a US$0,086/h por nó, em vez de dois `Standard_D2als_v6` (2 vCPU, 4 GiB) a US$0,0804/h. O acréscimo é US$0,0112/h para o pool, calculado com preços pay-as-you-go de eastus2.
+
+| Cenário | US$/hora | US$/dia | US$/mês (730 h) |
+|---|---:|---:|---:|
+| Perfil full com WAF | ~0,524 | ~12,58 | ~382,67 |
+| Perfil full sem WAF | ~0,400 | ~9,60 | ~292,15 |
+| Rodada de 3 horas com WAF | — | — | ~1,57 por rodada |
+| Rodada de 3 horas sem WAF | — | — | ~1,20 por rodada |
+
+Os valores somam US$0,0112/h ao total do perfil core e mantêm as demais hipóteses da tabela anterior. Não incluem armazenamento e operações do Blob, tráfego, logs opcionais nem eventual cobrança do medidor `FreeTierInfrastructureCost`. Use `LAB_NODE_VM_SIZE=Standard_D2as_v5` e `LAB_NODE_COUNT=2` antes do plan/apply, e mantenha os mesmos valores até o destroy. O full usa Grafana e Prometheus dentro do cluster; não cria Azure Managed Grafana nem Azure Managed Prometheus. São preços estimados, não custos medidos; nenhuma rodada cloud foi executada.
 
 ## Cenários do v1 (Azure, dezembro de 2025 a janeiro de 2026)
 

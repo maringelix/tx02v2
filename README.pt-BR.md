@@ -35,14 +35,14 @@ A família do lab (v2):
 | Lint e scan de segurança da IaC (tflint + ruleset azurerm, trivy HIGH/CRITICAL, simples e com as entradas de exemplo) | `verificado no CI` | `make static` (`tflint`, `trivy-config`, `trivy-config-tfvars`) |
 | Workflows, scripts, manifests da plataforma e values do Helm (actionlint, shellcheck, kubeconform, helm template com o SHA256 do chart) | `verificado no CI` | `make static` (`actionlint`, `shellcheck`, `kubeconform`, `helm-template`) |
 | Scan de segredos e políticas do repositório (sem identificadores reais nem GUIDs, actions fixadas, tags do contrato em todo recurso que aceita tags, scripts que só agem no lab, regressões do v1) | `verificado no CI` | `make static` (`gitleaks`, `policy-*`, `repo-structure`, `version-consistency`) |
-| Contrato v2 com o dx02v2 (15 chaves da App Configuration, namespaces `dx02v2` e `observability`, RBAC do deployer, ClusterSecretStore, endpoint OTLP do Collector) | `verificado no CI` | `make static` (`contract-appconfig`, `contract-platform`); [docs/CONTRATO.md](docs/CONTRATO.md) |
-| Testes unitários do Terraform com provider azurerm mockado (sujeitos OIDC, conta do state, lista ABAC = papéis do lab, budget, AKS, PostgreSQL, Key Vault, ACR, AGC + WAF, chaves do contrato, atribuições de papel, Application Insights só com ingestão por Entra ID, validações negativas; 75 casos) | `verificado no CI` | `make test`; job `test` do CI |
+| Contrato v3 com dx02v2 (15 chaves da App Configuration, labels ambient, enforcement do Gatekeeper, GitOps e backup em Blob Azure) | `verificado localmente` | `make static`; [docs/CONTRATO.md](docs/CONTRATO.md) |
+| Testes unitários do Terraform com provider azurerm mockado (sujeitos OIDC, conta do state, lista ABAC = papéis do lab, budget, AKS, PostgreSQL, Key Vault, ACR, AGC + WAF, Blob do Velero, chaves do contrato, papéis, Application Insights só com ingestão por Entra ID, validações negativas; 76 casos) | `verificado localmente` | `make test`; job `test` do CI |
 | Bootstrap (resource providers, conta do state, grupo do lab, identidades OIDC do GitHub, budget) | `não executado em nuvem (v2)` | `terraform/bootstrap`, `docs/RUNBOOK.md` |
 | Apply do lab (VNet, AKS 1.36, PostgreSQL 17, Key Vault, ACR, AGC + WAF, contrato na App Configuration) | `não executado em nuvem (v2)` | `.github/workflows/terraform-apply.yml` |
 | Plan em pull requests | `não executado em nuvem (v2)` | `.github/workflows/terraform-plan.yml` |
-| Camada de plataforma (ALB Controller 1.12.2, External Secrets Operator 2.12.0, OpenTelemetry Collector 0.162.0 enviando os traces do app ao Application Insights com Workload ID) | `não executado em nuvem (v2)` | `.github/workflows/platform.yml`, `platform/install.sh`; os charts são renderizados pelo `helm-template` |
+| Camada de plataforma (`core` ou `full`): controllers base e 15 charts fixados no full (Istio ambient, observabilidade, Argo CD GitOps, Gatekeeper, Trivy, Velero no Blob Azure, Chaos Mesh) | `não executado em nuvem (v2)` | `.github/workflows/platform.yml`; `helm-template-full` renderiza cada chart real fixado |
 | Destroy + checagem de sobras | `não executado em nuvem (v2)` | `.github/workflows/terraform-destroy.yml`, `scripts/leftovers.sh` |
-| HTTPS no listener do Application Gateway for Containers | `planejado` | fora do contrato v2 (`docs/CONTRATO.md`) |
+| HTTPS no listener do Application Gateway for Containers | `planejado` | fora do contrato v3 (`docs/CONTRATO.md`) |
 | Configurações do repositório como código (ruleset, environment `lab`) | `verificado localmente` | `scripts/repo-guardrails.sh` aplicado; conferido com `gh api` em 2026-10-14 (`docs/PUBLICACAO.md`) |
 | **Lab local, checks estáticos**: testes de plan do `terraform/envs/local` (rede privada, labels, registry só em loopback, banco só TLS, digests, validações negativas; 10 casos), 15 charts locais por SHA256 renderizando só digests e ClusterIP, políticas do Gatekeeper contra os casos do gator | `verificado localmente` | `terraform-test:envs/local`, `helm-template-local`, `kubeconform-local`, `policy-gator`, `local-versions` |
 | **Lab local** (Terraform no Docker): cluster kind + ACR, PostgreSQL (só TLS), Blob Storage (emulador com API S3), load balancer e servidor git emulados; destroy + checagem de sobras | `verificado no CI` | `make e2e` (`terraform/envs/local`, `scripts/local-lab.sh`) |
@@ -56,7 +56,7 @@ A família do lab (v2):
 | Scan dentro do cluster: Trivy Operator (relatórios de vulnerabilidade e de configuração) | `verificado no CI` | `make e2e` |
 | Ensaio de backup e restore: Velero no emulador de objetos (namespace apagado e restaurado com os dados) | `verificado no CI` | `make e2e` |
 | Chaos engineering com hipóteses: pod kill, 100 ms de latência de rede, stress de CPU e memória (Chaos Mesh); disponibilidade, latência e reinícios medidos | `verificado no CI` | `make e2e` |
-| Os mesmos add-ons no AKS | `planejado` | o lab local mostra o alvo; a camada de plataforma em nuvem instala só o ALB Controller, o ESO e o OpenTelemetry Collector |
+| Perfil full Azure no AKS | `não executado em nuvem (v2)` | `platform --profile full` instala 15 charts fixados com overlays Azure; `helm-template-full` valida os renders, não o comportamento em runtime |
 
 As linhas `verificado no CI` (`HARNESS_STRICT=1 make verify`) rodam em todo pull request, em todo
 push para a `main` e toda semana (jobs `static` e `test` do CI). Uma linha de nuvem só muda com uma
@@ -147,6 +147,10 @@ Siga o [docs/RUNBOOK.md](docs/RUNBOOK.md): bootstrap → variáveis do GitHub do
 apply → plataforma → deploy do dx02v2 → smoke test → destroy → checagem de sobras (local, como Owner
 da assinatura) → issue `cloud_run_report`.
 
+### Perfil full da plataforma Azure
+
+O workflow `platform` oferece `core` e `full`. O full instala 15 charts fixados por versão, SHA256 do pacote e digests de imagem; inclui Istio ambient, Prometheus, Alertmanager, Grafana, Loki, Alloy, Tempo, Collector, Argo CD GitOps, Gatekeeper, Trivy, Velero em Blob privado e Chaos Mesh. Configure `LAB_NODE_VM_SIZE=Standard_D2as_v5` e `LAB_NODE_COUNT=2` antes do apply. Custos e limites: [docs/CUSTOS.md](docs/CUSTOS.md). Os charts foram renderizados localmente; a execução em Azure segue `não executado em nuvem (v2)`.
+
 ## Harness
 
 | Alvo | O que roda | Quando |
@@ -168,7 +172,7 @@ da assinatura) → issue `cloud_run_report`.
 |---|---|
 | [FORK.md](FORK.md) | fork do lab (em inglês): o que o GitHub não copia, o lab local, a sua conta de nuvem |
 | [docs/ARQUITETURA.md](docs/ARQUITETURA.md) | diagrama, ADRs, AWS ↔ Azure, v1 → v2 |
-| [docs/CONTRATO.md](docs/CONTRATO.md) | contrato tx02v2 ⇄ dx02v2 v2 (fonte da verdade) |
+| [docs/CONTRATO.md](docs/CONTRATO.md) | contrato tx02v2 ⇄ dx02v2 v3 (fonte da verdade) |
 | [docs/RUNBOOK.md](docs/RUNBOOK.md) | rodada completa na nuvem |
 | [docs/LAB_LOCAL.md](docs/LAB_LOCAL.md) | o lab local: o que é emulado, como rodar, sondas, limites |
 | [docs/CUSTOS.md](docs/CUSTOS.md) | estimativa de custo por componente, com e sem WAF |

@@ -16,7 +16,7 @@ humana/agente). Os testes citados ficam em `terraform/*/tests/` e rodam com `mak
 | SEC-05 | `id-token: write` só em jobs de nuvem com `environment: lab` (o plan, atrás da guarda); nunca no `ci.yml`; sem `client-secret`, `creds` ou chaves de storage em workflows | limita quem obtém credenciais | `policy-workflows` | bloqueante |
 | SEC-06 | API server público restrito a `api_server_authorized_ip_ranges`; `0.0.0.0/0` exige `allow_api_server_from_anywhere = true` | reduz exposição; a escolha fica explícita | validação + `validations.tftest.hcl`; `aks.tftest.hcl` | bloqueante |
 | SEC-07 | Identidades de CI com papéis só em `tx02v2-lab` ou no container do state; nada no escopo da assinatura; Owner e User Access Administrator nunca atribuídos | o lab não alcança o resto da assinatura | `bootstrap/tests/roles.tftest.hcl`; `policy-terraform` | bloqueante |
-| SEC-08 | O apply só atribui os 9 papéis de `modules/role-ids` (condição ABAC), e o root do lab atribui exatamente esses | o apply não consegue se promover | testes `apply_identity_is_scoped_to_the_lab`, `the_lab_assigns_exactly_the_abac_roles`, `no_app_deployers_assign_nothing_extra` | bloqueante |
+| SEC-08 | O apply só atribui os 11 papéis built-in de `modules/role-ids` (condição ABAC), e o root do lab atribui exatamente os papéis necessários | o apply não consegue se promover; Velero recebe acesso de dados só no seu container Blob | testes `apply_identity_is_scoped_to_the_lab`, `the_lab_assigns_exactly_the_abac_roles`, `no_app_deployers_assign_nothing_extra` | bloqueante |
 | SEC-09 | Só Entra ID: contas locais do AKS desligadas + Azure RBAC; ACR sem admin e sem pull anônimo; App Configuration sem autenticação local; storage sem chaves compartilhadas; Key Vault com autorização RBAC | nenhuma credencial estática existe | `policy-terraform`; testes do AKS e de `data_stores` | bloqueante |
 | SEC-10 | PostgreSQL só privado (sem acesso público, sem regras de firewall), TLS obrigatório (>= 1.2) e 5432 liberado só da subnet dos nós | o banco não tem porta na Internet | `policy-terraform`; testes `postgres_server`, `postgres_is_reachable_only_from_the_aks_nodes` | bloqueante |
 | SEC-11 | Deployers não recebem nada no Key Vault; o ESO só tem `Key Vault Secrets User` no vault do lab | menor privilégio sobre segredos | `the_lab_assigns_exactly_the_abac_roles` | bloqueante |
@@ -75,6 +75,9 @@ humana/agente). Os testes citados ficam em `terraform/*/tests/` e rodam com `mak
 | AGT-01 | Agentes de IA nunca executam ações que alteram a nuvem sem pedido humano explícito na tarefa | dinheiro e segurança | `AGENTS.md` | processo |
 | AGT-02 | Agentes não enfraquecem gates nem adicionam ignores sem justificativa e validade | o harness só vale se for respeitado | `AGENTS.md`; checks acima | processo |
 | AGT-03 | Agentes param e perguntam nos casos listados em `AGENTS.md` | decisões caras são humanas | `AGENTS.md` | processo |
+
+| K8S-05 | Argo CD do perfil full fica em ClusterIP; o app-of-apps só sincroniza o projeto `platform`; o projeto `dx02v2` limita repositório, namespace e tipos; o deployer pode fazer `get`, `watch` e `patch` só na Application `dx02v2` | GitOps não amplia o acesso do deployer às outras Applications | `helm-template-full`, `contract-platform`, teste de teardown | bloqueante |
+| SEC-20 | Velero usa Workload ID, Storage Account sem shared key, container privado e `Storage Blob Data Contributor` somente no container; lifecycle apaga blobs após 35 dias | nenhuma credencial estática nem acesso de dados amplo | `terraform/envs/lab/tests/roles.tftest.hcl`, `helm-template-full` | bloqueante |
 
 ## Exceções
 

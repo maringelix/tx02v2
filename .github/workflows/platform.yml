@@ -15,6 +15,13 @@ on:
           - install
           - uninstall
         default: install
+      profile:
+        description: Core platform only, or the full platform including GitOps and observability
+        type: choice
+        options:
+          - core
+          - full
+        default: core
 
 permissions:
   contents: read
@@ -34,6 +41,9 @@ jobs:
     env:
       # Secrets, not variables: the logs of a public repository are public, and a secret is masked.
       APP_DEPLOYER_PRINCIPAL_IDS: ${{ secrets.LAB_APP_DEPLOYER_PRINCIPAL_IDS || '[]' }}
+      SLACK_WEBHOOK_URL: ${{ secrets.LAB_SLACK_WEBHOOK_URL }}
+      GITHUB_OWNER: ${{ github.repository_owner }}
+      PROFILE: ${{ inputs.profile }}
     steps:
       - name: Check repository variables
         env:
@@ -89,7 +99,7 @@ jobs:
           ACTION: ${{ inputs.action }}
         run: |
           case "$ACTION" in
-            install) bash platform/install.sh ;;
+            install) bash platform/install.sh --profile "$PROFILE" --github-owner "$GITHUB_OWNER" ;;
             uninstall) bash platform/uninstall.sh ;;
             *) echo "::error::unknown action: $ACTION"; exit 1 ;;
           esac

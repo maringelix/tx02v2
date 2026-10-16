@@ -77,7 +77,7 @@ humana/agente). Os testes citados ficam em `terraform/*/tests/` e rodam com `mak
 | AGT-03 | Agentes param e perguntam nos casos listados em `AGENTS.md` | decisões caras são humanas | `AGENTS.md` | processo |
 
 | K8S-05 | Argo CD do perfil full fica em ClusterIP; o app-of-apps só sincroniza o projeto `platform`; o projeto `dx02v2` limita repositório, namespace e tipos; o deployer pode fazer `get`, `watch` e `patch` só na Application `dx02v2` | GitOps não amplia o acesso do deployer às outras Applications | `helm-template-full`, `contract-platform`, teste de teardown | bloqueante |
-| SEC-20 | Velero usa Workload ID, Storage Account sem shared key, container privado e `Storage Blob Data Contributor` somente no container; lifecycle apaga blobs após 35 dias | nenhuma credencial estática nem acesso de dados amplo | `terraform/envs/lab/tests/roles.tftest.hcl`, `helm-template-full` | bloqueante |
+| SEC-20 | Velero usa Workload ID, Storage Account sem shared key, firewall de rede `Deny` que libera só a subnet dos nós AKS, container privado e `Storage Blob Data Contributor` somente no container; lifecycle apaga blobs após 35 dias | nenhuma credencial estática nem acesso de dados amplo | `terraform/envs/lab/tests/roles.tftest.hcl`, `terraform/envs/lab/tests/network.tftest.hcl`, `helm-template-full` | bloqueante |
 
 ## Exceções
 

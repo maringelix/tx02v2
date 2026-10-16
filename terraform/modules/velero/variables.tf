@@ -31,6 +31,11 @@ variable "resource_group_name" {
   type = string
 }
 
+variable "aks_nodes_subnet_id" {
+  description = "Only the AKS node subnet may reach the Storage account through its Microsoft.Storage service endpoint."
+  type        = string
+}
+
 variable "oidc_issuer_url" {
   description = "OIDC issuer URL of the AKS cluster for the Velero Workload Identity."
   type        = string

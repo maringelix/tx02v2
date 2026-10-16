@@ -21,6 +21,10 @@ resource "azurerm_subnet" "aks_nodes" {
   resource_group_name  = var.resource_group_name
   virtual_network_name = azurerm_virtual_network.this.name
   address_prefixes     = [var.aks_nodes_subnet_cidr]
+
+  service_endpoint {
+    service = "Microsoft.Storage"
+  }
 }
 
 resource "azurerm_subnet" "agc" {

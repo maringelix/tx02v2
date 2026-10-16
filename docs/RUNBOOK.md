@@ -8,6 +8,11 @@ será a primeira evidência. Os tempos abaixo são estimativas, não medições.
 > item é o Application Gateway for Containers com WAF (US$0,279/h). Preços de referência (Azure
 > Retail Prices API, 2026-10-11) — confira a calculadora oficial e o `docs/CUSTOS.md`. Uma rodada de
 > 3 horas fica perto de US$1,50; um lab esquecido passa de US$12 por dia. Destrua no mesmo dia.
+>
+> Com `profile=full` e `LAB_NODE_VM_SIZE=Standard_D2as_v5`, a estimativa é US$0,524/h com WAF
+> (US$0,400/h sem) ou cerca de US$1,57 (US$1,20 sem WAF) por 3 horas. O padrão `core` continua
+> usando `Standard_D2als_v6`. O perfil full não foi executado em nuvem; veja `docs/CUSTOS.md` para
+> requests, hipóteses e custos variáveis de armazenamento/telemetria.
 
 ## 1. Pré-requisitos
 
@@ -202,6 +207,36 @@ O Velero grava recursos Kubernetes no container Blob privado com a identidade fe
 aprovada pode usar `velero backup create dx02v2-smoke --include-namespaces dx02v2 --wait` e
 `velero backup describe dx02v2-smoke --details`. Não remova o namespace do app para testar restore em
 produção. Backup e restore ainda não foram executados em Azure.
+
+#### Ensaio isolado de restore do Velero
+
+Faça este drill somente numa rodada aprovada, com o perfil full instalado. Ele apaga apenas um
+namespace temporário com um ConfigMap, não toca no `dx02v2` nem no banco. O backup fica no Blob até
+ser apagado; confirme a saída dos comandos antes de continuar.
+
+```bash
+NAMESPACE=velero-restore-drill
+BACKUP="velero-restore-drill-$(date -u +%Y%m%d%H%M%S)"
+RESTORE="${BACKUP}-restore"
+
+kubectl create namespace "$NAMESPACE"
+kubectl create configmap restore-proof --namespace "$NAMESPACE" --from-literal=payload=restored
+velero backup create "$BACKUP" --include-namespaces "$NAMESPACE" --wait
+velero backup describe "$BACKUP" --details
+kubectl delete namespace "$NAMESPACE" --wait
+velero restore create "$RESTORE" --from-backup "$BACKUP" --wait
+velero restore describe "$RESTORE" --details
+kubectl get configmap restore-proof --namespace "$NAMESPACE" -o jsonpath='{.data.payload}'
+# Confirme que o comando imprimiu "restored" e que o restore concluiu antes de limpar.
+kubectl delete namespace "$NAMESPACE" --wait
+velero restore delete "$RESTORE" --confirm
+velero backup delete "$BACKUP" --confirm
+```
+
+Se backup ou restore não chegar a `Completed`, veja `velero backup logs "$BACKUP"` ou
+`velero restore logs "$RESTORE"`, além do status do `BackupStorageLocation`. Corrija a identidade,
+o container, a rede ou o RBAC antes de repetir. `velero backup delete` remove os dados do object
+storage; apagar só o objeto Kubernetes com `kubectl delete backup` deixa o blob e a cobrança.
 
 Ao atualizar um lab criado antes do contrato v3: `Monitoring Metrics Publisher` e
 `Storage Blob Data Contributor` entraram na lista ABAC de `tx02v2-gha-apply`, então aplique o bootstrap

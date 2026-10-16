@@ -1,6 +1,8 @@
-# Blob storage for Velero. The storage account has no shared-key or anonymous access; the Azure
-# plugin receives a workload identity and the data role is assigned by the lab root at container
-# scope only (roles.tf), not at the account or resource-group scope.
+# Blob storage for Velero. The storage account has no shared-key or anonymous access; its public
+# endpoint accepts network traffic only from the AKS node subnet through the Microsoft.Storage
+# service endpoint. The Azure plugin receives a workload identity and the data role is assigned by
+# the lab root at container scope only (roles.tf), not at the account or resource-group scope.
+# tflint-ignore: azurerm_resources_missing_prevent_destroy # statement: backup data expires after 35 days and is intentionally removed by the lab's terraform destroy (R4.8); expired_at: 2027-04-16
 resource "azurerm_storage_account" "this" {
   name                            = var.storage_account_name
   resource_group_name             = var.resource_group_name
@@ -14,9 +16,17 @@ resource "azurerm_storage_account" "this" {
   default_to_oauth_authentication = true
   allow_nested_items_to_be_public = false
   public_network_access           = "Enabled"
-  tags                            = var.tags
+
+  network_rules {
+    default_action             = "Deny"
+    bypass                     = []
+    virtual_network_subnet_ids = [var.aks_nodes_subnet_id]
+  }
+
+  tags = var.tags
 }
 
+# tflint-ignore: azurerm_resources_missing_prevent_destroy # statement: backup data expires after 35 days and is intentionally removed by the lab's terraform destroy (R4.8); expired_at: 2027-04-16
 resource "azurerm_storage_container" "backups" {
   name                  = var.container_name
   storage_account_id    = azurerm_storage_account.this.id

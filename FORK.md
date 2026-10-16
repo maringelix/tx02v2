@@ -115,6 +115,11 @@ Before the first apply:
   biggest item), the AKS nodes and PostgreSQL Flexible Server bill by the hour while the lab is up.
   The bootstrap creates a monthly budget with alerts, but a budget only warns, it stops nothing.
   Destroy on the same day.
+- The `core` profile is the default: about US$0.513/hour with WAF (US$0.389/hour without). The
+  optional `full` profile is about US$0.524/hour with WAF (US$0.400/hour without) using two
+  `Standard_D2as_v5` nodes; 3 hours are about US$1.57 (US$1.20 without WAF). These are estimates,
+  exclude telemetry and Blob usage, and are not measured cloud costs. Choose `core` or `full` in the
+  `platform` workflow and follow the matching size settings in `docs/RUNBOOK.md`.
 - **Free Trial subscriptions restrict this lab**: v1 found PostgreSQL Flexible Server blocked in every
   region tried, AKS VM sizes refused and low quotas that cannot be raised
   ([docs/RUNBOOK.md](docs/RUNBOOK.md), section 1, and [docs/LICOES_APRENDIDAS.md](docs/LICOES_APRENDIDAS.md)).

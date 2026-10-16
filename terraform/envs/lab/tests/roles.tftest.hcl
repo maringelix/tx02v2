@@ -295,6 +295,9 @@ run "controller_identities_are_federated_with_the_cluster" {
       module.velero.storage_security.shared_access_key_enabled == false &&
       module.velero.storage_security.anonymous_access == false &&
       module.velero.storage_security.public_network_access == "Enabled" &&
+      module.velero.storage_security.network_default_action == "Deny" &&
+      length(module.velero.storage_security.network_subnet_ids) == 1 &&
+      contains(module.velero.storage_security.network_subnet_ids, module.network.aks_nodes_subnet_id) &&
       module.velero.storage_security.container_access_type == "private" &&
       module.velero.storage_security.backup_expiration_days == 35 &&
       azurerm_role_assignment.lab["velero-blob-data-contributor"].scope == module.velero.container_id

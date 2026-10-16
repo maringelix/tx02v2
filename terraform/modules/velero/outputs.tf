@@ -64,6 +64,8 @@ output "storage_security" {
     public_network_access     = azurerm_storage_account.this.public_network_access
     shared_access_key_enabled = azurerm_storage_account.this.shared_access_key_enabled
     anonymous_access          = azurerm_storage_account.this.allow_nested_items_to_be_public
+    network_default_action    = azurerm_storage_account.this.network_rules[0].default_action
+    network_subnet_ids        = azurerm_storage_account.this.network_rules[0].virtual_network_subnet_ids
     container_access_type     = azurerm_storage_container.backups.container_access_type
     backup_expiration_days    = azurerm_storage_management_policy.this.rule[0].actions[0].base_blob[0].delete_after_days_since_modification_greater_than
   }

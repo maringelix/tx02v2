@@ -1302,7 +1302,7 @@ check_helm_template() {
 # placeholders. This catches values that do not match the chart schema and enforces digest-pinned
 # images and ClusterIP services before the expensive CI stages run.
 check_helm_template_full() {
-  local rc=0 entry repo_key version_key sha_key chart release ns value_list tgz f content values_file rendered images bad svc count=0
+  local rc=0 entry repo_key version_key sha_key chart release ns value_list tgz f content values_file rendered images bad svc count=0 sizing sizing_cpu sizing_memory docs_cpu docs_memory
   local test_storage_uri="https://tx02v2labb602d594velero.blob.core.windows.net"
   local -a files=() args=() entries=()
   need helm
@@ -1346,8 +1346,31 @@ check_helm_template_full() {
       rc=1
       continue
     }
-    images="$(grep -hoE '^[[:space:]-]*image:[[:space:]]*["'\'']?[^"'\'"'[:space:]]+' "$rendered" |
-      sed -E 's/^[[:space:]-]*image:[[:space:]]*["'\'']?//' | sort -u)" || images=""
+    images="$(awk '
+      function indent(line, spaces) {
+        spaces = line
+        sub(/[^ ].*$/, "", spaces)
+        return length(spaces)
+      }
+      {
+        if (in_block) {
+          if ($0 ~ /^[[:space:]]*$/ || indent($0) > block_indent) next
+          in_block = 0
+        }
+        if ($0 ~ /:[[:space:]]*[|>][-+0-9]*[[:space:]]*$/) {
+          block_indent = indent($0)
+          in_block = 1
+          next
+        }
+        if ($0 ~ /^[[:space:]-]*image:[[:space:]]*/) {
+          value = $0
+          sub(/^[[:space:]-]*image:[[:space:]]*/, "", value)
+          sub(/^["\047]/, "", value)
+          sub(/["\047].*$/, "", value)
+          print value
+        }
+      }
+    ' "$rendered" | sort -u)" || images=""
     bad=""
     [[ -z "$images" ]] || bad="$(grep -vE '@sha256:[0-9a-f]{64}$' <<<"$images")" || bad=""
     if [[ -n "$bad" ]]; then
@@ -1370,6 +1393,19 @@ check_helm_template_full() {
     echo "platform/full/charts.txt rendered $count charts; expected 15"
     rc=1
   }
+  sizing="$(scripts/platform-sizing.sh 2 "$out")"
+  sizing_cpu="$(sed -n 's/^cpu_millicores=//p' <<<"$sizing")"
+  sizing_memory="$(sed -n 's/^memory_mib=//p' <<<"$sizing")"
+  docs_cpu="$(sed -nE 's#^[|][[:space:]]*full[[:space:]]*[|][[:space:]]*([0-9]+) mCPU / [0-9]+ MiB[[:space:]]*[|].*#\1#p' docs/CUSTOS.md)"
+  docs_memory="$(sed -nE 's#^[|][[:space:]]*full[[:space:]]*[|][[:space:]]*[0-9]+ mCPU / ([0-9]+) MiB[[:space:]]*[|].*#\1#p' docs/CUSTOS.md)"
+  if [[ -z "$docs_cpu" || -z "$docs_memory" ]]; then
+    echo "docs/CUSTOS.md: missing the full-profile requests row"
+    rc=1
+  elif [[ "$sizing_cpu" != "$docs_cpu" || "$sizing_memory" != "$docs_memory" ]]; then
+    printf 'R4.7 sizing differs: rendered %s mCPU / %s MiB; docs/CUSTOS.md says %s mCPU / %s MiB\n' \
+      "$sizing_cpu" "$sizing_memory" "$docs_cpu" "$docs_memory"
+    rc=1
+  fi
   helm template platform platform/gitops --namespace argocd \
     --set-string dxRepoURL=https://github.com/maringelix/dx02v2.git \
     --set-string dxRevision=gitops/azure --set-string dxPath=deploy/k8s/overlays/azure \
@@ -1381,7 +1417,6 @@ check_helm_template_full() {
     echo "platform/gitops: unresolved placeholder in the rendered chart"
     rc=1
   fi
-  scripts/platform-sizing.sh 2 "$out"
   return "$rc"
 }
 

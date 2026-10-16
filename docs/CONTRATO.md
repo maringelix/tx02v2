@@ -17,7 +17,7 @@ serviços equivalentes da Azure.
 | Identidades do GitHub: nomes, issuer, audience e um sujeito exato por credencial federada | `terraform/bootstrap/tests/identities.tftest.hcl` | `verificado localmente` |
 | Papéis do plan e do apply; a condição ABAC do apply lista exatamente os papéis que o root do lab atribui | `terraform/bootstrap/tests/roles.tftest.hcl`, `terraform/envs/lab/tests/roles.tftest.hcl` | `verificado localmente` |
 | Papéis de `dx02v2-gha-deploy`, dos `app_deployer_principal_ids`, do ESO, do ALB Controller, do OpenTelemetry Collector e do kubelet | `terraform/envs/lab/tests/roles.tftest.hcl` | `verificado localmente` |
-| Velero: identidade federada, Blob privado, lifecycle de 35 dias e role de dados no container | `terraform/envs/lab/tests/roles.tftest.hcl`, `helm-template-full` | `verificado localmente` |
+| Velero: identidade federada, Blob privado, firewall `Deny` com acesso só pela subnet AKS, lifecycle de 35 dias e role de dados no container | `terraform/envs/lab/tests/roles.tftest.hcl`, `terraform/envs/lab/tests/network.tftest.hcl`, `helm-template-full` | `verificado localmente` |
 | GitOps: app-of-apps do Argo CD, branch `gitops/azure` e RoleBinding restrita do deployer | `contract-platform`, `helm-template-full` | `verificado localmente` |
 | Application Insights dos traces só com ingestão por Entra ID (autenticação local desligada), workspace e limites diários | `terraform/envs/lab/tests/roles.tftest.hcl` (`traces_accept_only_entra_id_ingestion`) | `verificado localmente` |
 | Collector no namespace `observability`, exporter do Azure Monitor com Entra ID, mesmo digest do lab local | checks `contract-platform` e `helm-template` | `verificado localmente` |
@@ -54,6 +54,7 @@ serviços equivalentes da Azure.
 | Cluster AKS | `tx02v2-lab`, Kubernetes `1.36`, contas locais desligadas, Entra ID com Azure RBAC, OIDC issuer + workload identity, Azure CNI Overlay com dataplane Cilium (aplica NetworkPolicy) |
 | Nós | x86-64 (padrão `Standard_D2als_v6`): as imagens do dx02v2 são `linux/amd64`, então `node_vm_size` não pode ser um tamanho Arm64 (nada no código impede; é regra do contrato) |
 | Namespace do app | `dx02v2` — criado pela plataforma com Pod Security `restricted`, Istio ambient (`istio.io/dataplane-mode=ambient`) e enforcement Gatekeeper (`policy.lab/enforce=true` no perfil full) |
+| NetworkPolicy do app com Istio ambient | O dataplane Cilium aplica as políticas; permitir HBONE em TCP 15008 entre pods na malha e as sondas do kubelet em `169.254.7.127/32` (ver `docs/ARQUITETURA.md`, ADR 41); o harness do `dx02v2` confere as regras |
 | Traces (OpenTelemetry, versão 2) | `http://opentelemetry-collector.observability.svc:4318` (OTLP/HTTP). O Collector é instalado pela camada de plataforma no namespace `observability` (mesmos labels de Pod Security) e grava os spans no Application Insights `tx02v2-lab-traces` (workspace `tx02v2-lab-traces`, autenticação local desligada) com a identidade `tx02v2-lab-otel` (Workload ID, sujeito `system:serviceaccount:observability:opentelemetry-collector`; só `Monitoring Metrics Publisher` nesse Application Insights). O app não recebe nenhum papel Azure para isso |
 | RBAC Kubernetes do deployer | Role `dx02v2-deployer` + RoleBinding `dx02v2-deployers` no namespace `dx02v2`; sujeito `kind: User`, `name: <object ID da identidade dx02v2-gha-deploy>` (mais os object IDs de `app_deployer_principal_ids`) |
 | ACR | nome `tx02v2lab<suffix>`, Basic, usuário admin e pull anônimo desligados; repositórios `dx02v2/api`, `dx02v2/web`; imagens com a tag do SHA git completo (40 caracteres) do dx02v2. O Basic não tem imutabilidade de tags no repositório inteiro: o deploy recusa sobrescrever uma tag existente. A identidade kubelet do AKS tem `AcrPull` no registry |
@@ -169,9 +170,10 @@ altera outras Applications.
 Velero usa o plugin Azure e Entra Workload ID para gravar recursos Kubernetes no container Blob
 privado do lab. Não cria snapshots de disco nem substitui o backup gerenciado do PostgreSQL. A role
 `Storage Blob Data Contributor` fica apenas no escopo do container; os blobs expiram após 35 dias.
-A Storage Account mantém endpoint público de rede porque o AKS não usa Private Endpoint para esse
-recurso, mas não permite acesso anônimo e desliga as chaves compartilhadas. Backup e restore em
-Azure ainda não foram executados (`não executado em nuvem (v2)`).
+A Storage Account mantém endpoint público porque o AKS não usa Private Endpoint, mas o firewall nega
+por padrão e libera apenas a subnet dos nós AKS via service endpoint `Microsoft.Storage`. Não permite
+acesso anônimo e desliga as chaves compartilhadas. Backup e restore em Azure ainda não foram
+executados (`não executado em nuvem (v2)`).
 
 ## Runtime do app (dx02v2)
 

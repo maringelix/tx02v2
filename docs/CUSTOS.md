@@ -105,6 +105,43 @@ O perfil full precisa de mais memória que o perfil core. Para os valores de ref
 
 Os valores somam US$0,0112/h ao total do perfil core e mantêm as demais hipóteses da tabela anterior. Não incluem armazenamento e operações do Blob, tráfego, logs opcionais nem eventual cobrança do medidor `FreeTierInfrastructureCost`. Use `LAB_NODE_VM_SIZE=Standard_D2as_v5` e `LAB_NODE_COUNT=2` antes do plan/apply, e mantenha os mesmos valores até o destroy. O full usa Grafana e Prometheus dentro do cluster; não cria Azure Managed Grafana nem Azure Managed Prometheus. São preços estimados, não custos medidos; nenhuma rodada cloud foi executada.
 
+### Requests renderizados e capacidade de referência
+
+O `helm-template-full` renderiza os 15 pacotes de charts fixados e chama `scripts/platform-sizing.sh 2`.
+Em 2026-10-16, os manifests somaram os requests da tabela abaixo. DaemonSets contam uma instância
+por nó; Prometheus e Alertmanager contam seus `spec.resources`. O check compara esses números com
+esta linha para que a estimativa não se separe dos charts.
+
+| Perfil | Requests dos charts | Nós de referência | Capacidade nominal antes de reservar recursos para AKS e para o app |
+|---|---:|---|---|
+| full | 795 mCPU / 3104 MiB | 2 × `Standard_D2as_v5` (2 vCPU, 8 GiB cada) | 4000 mCPU / 16384 MiB; os charts usam cerca de 20% da CPU e 19% da memória nominal |
+
+Os valores são requests dos charts, não uso medido nem capacidade `allocatable`. Eles não incluem
+pods de sistema do AKS, a aplicação, nem o Azure Monitor Agent. O tamanho `D2as_v5` fornece margem
+de memória para esses componentes; o render não prova que o cluster sobe ou que a margem é
+suficiente em runtime. A escolha continua `não executado em nuvem (v2)`.
+
+### Comparação de observabilidade gerenciada (R4.2)
+
+Com as demais premissas e os dois nós do perfil `full` mantidos, a opção no cluster custa cerca de
+US$1,57 por uma rodada de 3 horas com WAF (US$1,20 sem WAF), como na tabela anterior. A alternativa
+gerenciada mantém essa base de infraestrutura e acrescenta os serviços abaixo. Não atribuí economia
+de nó por remover charts, pois requests do agente gerenciado e capacidade `allocatable` não foram
+medidos.
+
+| Item gerenciado, `eastus2` | Referência de preço consultada em 2026-10-16 | Custo em uma rodada de 3 horas |
+|---|---:|---:|
+| Azure Managed Grafana Standard X1 (2 Standard Units) | US$0,034246 por unidade-hora + US$6 por usuário ativo/mês | ~US$0,2055 de instância + US$6 por usuário ativo/mês |
+| Azure Monitor Managed Prometheus | US$0,16 por 10 milhões de amostras ingeridas; US$0,001 por 10 milhões processadas em consultas | depende do volume da rodada |
+| Log Analytics | US$2,76/GB após os primeiros 5 GB mensais gratuitos da conta de faturamento | depende do volume billable da rodada |
+
+Assim, mantendo a infraestrutura full, o cenário gerenciado começa em cerca de US$1,78 por 3 horas,
+mais usuários ativos e os volumes de métricas/logs; o cenário no cluster fica em cerca de US$1,57.
+O custo de usuário pode ser cobrado uma vez por mês, não proporcionalmente à duração da rodada.
+Não contabilizei a oferta promocional de 30 dias do Grafana. O custo exato gerenciado requer amostras
+e ingestão observadas; a documentação da Microsoft recomenda estimar com volumes medidos e a
+calculadora oficial. Nenhuma das opções foi executada nesta nuvem.
+
 ## Cenários do v1 (Azure, dezembro de 2025 a janeiro de 2026)
 
 Das notas do v1 (detalhes em `docs/LICOES_APRENDIDAS.md`, seção 17), para comparação; não servem como

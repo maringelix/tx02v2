@@ -55,7 +55,7 @@ A camada Terraform continua separada da plataforma Kubernetes. `terraform/envs/l
 
 O Argo CD é privado via ClusterIP. Um app-of-apps lê `platform/gitops` deste repositório pela branch `main`; o chart registra `dx02v2` a partir da branch pública `gitops/azure` do repositório de aplicação. O deployer pode fazer `get`, `watch` e `patch` apenas na Application `dx02v2`, sem listar nem alterar outras Applications. Antes de remover rotas ou Gateways, `platform/uninstall.sh` para as Applications para que a reconciliação não recrie os recursos.
 
-Velero usa o plugin Azure, Entra Workload ID e um container Blob privado com expiração de 35 dias. A role de dados é atribuída apenas no container; o endpoint da Storage Account é público na rede porque o AKS não usa Private Endpoint para este recurso. A autenticação dos dados continua por Entra ID e não há chave compartilhada. O backup cobre recursos Kubernetes, não snapshots de disco nem PostgreSQL. O Trivy Operator não recebe credencial ACR; achados de imagens privadas podem ficar incompletos.
+Velero usa o plugin Azure, Entra Workload ID e um container Blob privado com expiração de 35 dias. A role de dados é atribuída apenas no container. A Storage Account mantém o endpoint público, sem Private Endpoint, mas seu firewall nega por padrão e permite somente a subnet dos nós do AKS, com o service endpoint `Microsoft.Storage`; o CNI Overlay faz SNAT do tráfego dos pods para o IP do nó. A autenticação dos dados continua por Entra ID e não há chave compartilhada. O backup cobre recursos Kubernetes, não snapshots de disco nem PostgreSQL. O Trivy Operator não recebe credencial ACR; achados de imagens privadas podem ficar incompletos. Essa regra de rede é validada em código e testes mockados, não em uma rodada Azure.
 
 Renders dos charts reais, contratos e teardown foram verificados localmente. Instalação, backup e restore em Azure continuam `não executado em nuvem (v2)`.
 
@@ -133,7 +133,49 @@ flowchart LR
 | 37 | Perfis `core`/`observability`/`operations`/`full`; rede `10.251.0.0/24` e registry em `localhost:5002` | máquinas com pouca memória validam uma camada por vez; o CI roda `full`; rede e porta diferentes das do `tx01v2` (`10.250.0.0/24`, `5001`) evitam colisão entre os labs | um único perfil; os mesmos endereços em todos os pares |
 | 38 | Traces: o OpenTelemetry Collector como único destino OTLP; Tempo no lab local, Application Insights na nuvem (ingestão só com token do Entra ID: autenticação local desligada, extensão `azure_auth` com o Workload ID de `tx02v2-lab-otel` e `Monitoring Metrics Publisher` só nesse recurso) | o app e os Gateways falam só OTLP; trocar o backend não muda o app; a connection string vira endereço, não segredo; Tempo monolítico cabe no kind | connection string com autenticação local (a chave de instrumentação basta para gravar); SDK do Application Insights no app (prende o app à Azure); AAD Auth Proxy em sidecar |
 
-| 39 | Perfil cloud `core` e `full` | full instala 15 charts com pacotes e imagens pinados; sizing validado para `Standard_D2as_v5` com dois nós; workflows repassam `LAB_NODE_VM_SIZE` e `LAB_NODE_COUNT` a plan/apply/destroy | core continua o padrão de menor custo; os checks não aplicam recursos Azure |
+| 39 | Perfil cloud `core` e `full` | full instala 15 charts com pacotes e imagens pinados; requests renderizados: 795 mCPU e 3104 MiB em dois nós; sizing comparado com `docs/CUSTOS.md` | core continua o padrão de menor custo; os checks não aplicam recursos Azure |
+| 40 | Observabilidade do perfil `full` continua dentro do cluster | mantém as mesmas versões, imagens e sondas do lab local; o custo e os limites da alternativa gerenciada estão em `docs/CUSTOS.md` | Azure Monitor Managed Prometheus + Azure Managed Grafana + Log Analytics |
+| 41 | Istio ambient usa os charts upstream sobre Azure CNI Overlay com dataplane Cilium | o Istio CNI upstream declara compatibilidade com plugins CNI conformes; o AKS mantém o Azure CNI como plugin de rede | malha sidecar ou add-on gerenciado; o suporte ao conjunto upstream não foi validado pela Microsoft nem em nuvem |
+| 42 | Blob do Velero usa firewall com negação padrão e libera apenas a subnet dos nós AKS | service endpoint `Microsoft.Storage`; os pods Overlay saem com SNAT do IP do nó; autenticação Entra ID continua obrigatória | endpoint público sem regra de rede; não foi validado em nuvem |
+
+### R4.2 — Decisão de observabilidade (verificada em 2026-10-16)
+
+O perfil `full` mantém kube-prometheus-stack, Loki + Alloy e Tempo no cluster. Isso preserva a paridade
+com o lab local e permite que as sondas exercitem ingestão Prometheus, regras e alertas, dashboards,
+logs, traces e a carga dos próprios charts. Prometheus, Loki e Tempo usam `emptyDir`: seus dados não
+duram depois do destroy. O Collector continua enviando os traces do app ao Application Insights do
+core e também ao Tempo.
+
+A alternativa é Azure Monitor Managed Prometheus + Azure Managed Grafana + Log Analytics. Ela
+exercitaria a coleta gerenciada do AKS, DCR/AMA, consultas PromQL, a integração com Entra ID e retenção
+do serviço; não provaria a operação dos charts locais de Prometheus, Loki e Tempo. O Managed Prometheus
+cobra por amostras ingeridas e processadas em consultas; a documentação consultada informa retenção
+de 18 meses. Grafana Standard X1 usa duas Standard Units e também cobra usuários ativos. Como não
+temos volume medido de amostras nem de logs, `docs/CUSTOS.md` apresenta a fórmula e o custo-base de
+uma rodada, sem inventar um total gerenciado.
+
+Fontes consultadas em 2026-10-16: [Azure Monitor Managed Prometheus](https://learn.microsoft.com/azure/azure-monitor/metrics/prometheus-metrics-overview), [preços do Azure Monitor](https://azure.microsoft.com/pricing/details/monitor/), [opções de Grafana no Azure Monitor](https://learn.microsoft.com/azure/azure-monitor/visualize/visualize-grafana-overview), [Azure Managed Grafana](https://learn.microsoft.com/azure/managed-grafana/overview) e [preços do Azure Managed Grafana](https://azure.microsoft.com/pricing/details/managed-grafana/). Os preços são referências da Retail Prices API para `eastus2`, não faturas observadas; confira as tarifas da assinatura antes de uma rodada.
+
+### R4.3 — Istio ambient no AKS (verificado em 2026-10-16)
+
+O cluster mantém Azure CNI Overlay e dataplane Cilium; os charts upstream instalam `istio-cni` em
+encadeamento e ztunnel, sem substituir o plugin de rede do AKS. A documentação do Istio diz que seu
+CNI segue a especificação e deve ser compatível com plugins conformes. A documentação da Microsoft
+descreve Azure CNI Overlay e sua combinação com Cilium, e diz que o Istio CNI do add-on é separado do
+Azure CNI. Isso sustenta a escolha técnica, mas não é uma declaração da Microsoft de suporte aos
+charts upstream de Istio ambient. A instalação e o tráfego continuam `não executado em nuvem (v2)`.
+
+O tráfego ambient usa HBONE em TCP 15008. As NetworkPolicies do app no `dx02v2` devem permitir essa
+porta entre os pods selecionados e as sondas do kubelet em `169.254.7.127/32`, conforme o contrato e
+o PR consumidor coordenado. Fontes consultadas em 2026-10-16: [Istio CNI](https://istio.io/latest/docs/setup/additional-setup/cni/), [Istio ambient e NetworkPolicy](https://istio.io/latest/docs/ambient/usage/networkpolicy/), [Azure CNI Overlay no AKS](https://learn.microsoft.com/azure/aks/azure-cni-overlay), [dataplane Cilium no AKS](https://learn.microsoft.com/azure/aks/azure-cni-powered-by-cilium) e [Istio CNI do add-on AKS](https://learn.microsoft.com/azure/aks/istio-cni).
+
+### R4.5 — Rede do Blob do Velero (verificado em 2026-10-16)
+
+O endpoint do Storage Account continua público porque o lab não cria Private Endpoint. O firewall
+tem `default_action = Deny` e permite somente a subnet dos nós do AKS, que habilita o service endpoint
+`Microsoft.Storage`; os pods do Azure CNI Overlay usam SNAT do nó para destinos fora do CIDR de pods.
+O container continua privado, a role de dados fica no container, e cada chamada ainda precisa de um
+token Entra ID válido. Fontes: [regras de rede do Azure Storage](https://learn.microsoft.com/en-us/azure/storage/common/storage-network-security), [service endpoint para Storage](https://learn.microsoft.com/en-us/azure/storage/common/storage-network-security-virtual-networks) e [SNAT do Azure CNI Overlay](https://learn.microsoft.com/en-us/azure/aks/concepts-network-azure-cni-overlay). Esta configuração foi validada por Terraform e testes mockados, sem acesso ou aplicação em nuvem.
 
 ### Desvio documentado: papéis do ALB Controller
 

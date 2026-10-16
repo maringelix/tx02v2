@@ -8,6 +8,11 @@ será a primeira evidência. Os tempos abaixo são estimativas, não medições.
 > item é o Application Gateway for Containers com WAF (US$0,279/h). Preços de referência (Azure
 > Retail Prices API, 2026-10-11) — confira a calculadora oficial e o `docs/CUSTOS.md`. Uma rodada de
 > 3 horas fica perto de US$1,50; um lab esquecido passa de US$12 por dia. Destrua no mesmo dia.
+>
+> Com `profile=full` e `LAB_NODE_VM_SIZE=Standard_D2as_v5`, a estimativa é US$0,524/h com WAF
+> (US$0,400/h sem) ou cerca de US$1,57 (US$1,20 sem WAF) por 3 horas. O padrão `core` continua
+> usando `Standard_D2als_v6`. O perfil full não foi executado em nuvem; veja `docs/CUSTOS.md` para
+> requests, hipóteses e custos variáveis de armazenamento/telemetria.
 
 ## 1. Pré-requisitos
 
@@ -119,10 +124,14 @@ variáveis e os secrets `LAB_*` que você escolhe vêm da tabela abaixo.
 | `LAB_ALLOW_API_SERVER_FROM_ANYWHERE` | `true` | `TF_VAR_allow_api_server_from_anywhere` | opcional, padrão `false`; obrigatório com `0.0.0.0/0` |
 | `LAB_APP_DEPLOYER_PRINCIPAL_IDS` (**secret**) | `[]` | `TF_VAR_app_deployer_principal_ids` e o workflow `platform` (RoleBinding) | opcional, padrão `[]`; object IDs de quem faz deploy do dx02v2 de um laptop |
 | `LAB_ENABLE_WAF` | `true` | `TF_VAR_enable_waf` | opcional, padrão `true` (`docs/CUSTOS.md`) |
+| `LAB_NODE_VM_SIZE` | `Standard_D2as_v5` | `TF_VAR_node_vm_size` em plan/apply/destroy | opcional; padrão `Standard_D2als_v6`; use D2as_v5 para o perfil full |
+| `LAB_NODE_COUNT` | `2` | `TF_VAR_node_count` em plan/apply/destroy | opcional; 1–3, padrão `2`; mantenha o mesmo valor até destroy |
+| `LAB_SLACK_WEBHOOK_URL` (**secret**) | URL de incoming webhook do Slack | workflow `platform`, perfil full | opcional; guardado em Secret do cluster, nunca nos values versionados |
 
 `TF_VAR_github_owner` vem de `github.repository_owner`. Os demais inputs usam os padrões de
-`terraform/envs/lab/variables.tf`; para mudar um (por exemplo `node_vm_size`), adicione o
-`TF_VAR_<nome>` ao bloco `env` dos workflows num PR. Com `0.0.0.0/0`, a API do AKS fica alcançável
+`terraform/envs/lab/variables.tf`; `LAB_NODE_VM_SIZE` e `LAB_NODE_COUNT` são opcionais e já são
+repassados por plan, apply e destroy. Use `Standard_D2as_v5` e `2` para o perfil full; os valores
+originais continuam como padrão do perfil core. Com `0.0.0.0/0`, a API do AKS fica alcançável
 de qualquer IP durante a rodada (o token do Entra ID e o RBAC continuam obrigatórios;
 `docs/ARQUITETURA.md`, ADR 19).
 
@@ -165,8 +174,10 @@ terraform output
 
 ## 5. Plataforma
 
-Dispare `platform` com `action=install` e aprove o environment `lab`. Ele precisa de
-`tx02v2-gha-apply` em `LAB_CLUSTER_ADMIN_PRINCIPAL_IDS` e de um range que inclua os runners. O
+Dispare `platform` com `action=install`, escolha `profile=core` (padrão) ou `profile=full` e aprove o
+environment `lab`. Para full, configure `LAB_NODE_VM_SIZE=Standard_D2as_v5` antes do plan/apply e
+mantenha `LAB_NODE_COUNT=2`. O workflow precisa de `tx02v2-gha-apply` em
+`LAB_CLUSTER_ADMIN_PRINCIPAL_IDS` e de um range que inclua os runners. O
 `platform/install.sh`:
 
 1. lê as chaves do contrato na App Configuration, os client IDs de `tx02v2-lab-alb`,
@@ -183,8 +194,54 @@ Dispare `platform` com `action=install` e aprove o environment `lab`. Ele precis
    `tx02v2-lab-otel` e a connection string do Application Insights `tx02v2-lab-traces` num ConfigMap,
    e espera o `azure-key-vault` ficar `Ready` (o ESO alcançou o Key Vault).
 
-Ao atualizar um lab criado antes do contrato v2: o papel `Monitoring Metrics Publisher` entrou na
-condição ABAC de `tx02v2-gha-apply`, então aplique o bootstrap de novo (seção 2) antes do apply.
+No perfil `full`, o instalador acrescenta Istio ambient, cert-manager, observabilidade no cluster,
+Argo CD com GitOps, Gatekeeper, Trivy Operator, Velero Azure Blob e Chaos Mesh (15 charts fixados no
+total). O app-of-apps lê `platform/gitops` do tx02v2 na branch `main`; o Argo CD acompanha o repositório
+público do dx02v2 na branch `gitops/azure` e sincroniza `deploy/k8s/overlays/azure`. O workflow
+`deploy-azure` do dx02v2 publica essa branch e configura o overlay, as imagens e os IDs/CIDRs na
+Application viva. A branch recebe apenas parâmetros de exemplo; IDs e CIDRs reais ficam no cluster.
+Argo CD fica ClusterIP; use `kubectl port-forward` para acessar a UI. `platform/uninstall.sh` remove
+primeiro as Applications para impedir que o Argo CD recrie rotas durante o teardown.
+
+O Velero grava recursos Kubernetes no container Blob privado com a identidade federada do ServiceAccount
+`velero/velero`; não faz snapshots nem cobre o PostgreSQL. Uma verificação de backup após uma rodada
+aprovada pode usar `velero backup create dx02v2-smoke --include-namespaces dx02v2 --wait` e
+`velero backup describe dx02v2-smoke --details`. Não remova o namespace do app para testar restore em
+produção. Backup e restore ainda não foram executados em Azure.
+
+#### Ensaio isolado de restore do Velero
+
+Faça este drill somente numa rodada aprovada, com o perfil full instalado. Ele apaga apenas um
+namespace temporário com um ConfigMap, não toca no `dx02v2` nem no banco. O backup fica no Blob até
+ser apagado; confirme a saída dos comandos antes de continuar.
+
+```bash
+NAMESPACE=velero-restore-drill
+BACKUP="velero-restore-drill-$(date -u +%Y%m%d%H%M%S)"
+RESTORE="${BACKUP}-restore"
+
+kubectl create namespace "$NAMESPACE"
+kubectl create configmap restore-proof --namespace "$NAMESPACE" --from-literal=payload=restored
+velero backup create "$BACKUP" --include-namespaces "$NAMESPACE" --wait
+velero backup describe "$BACKUP" --details
+kubectl delete namespace "$NAMESPACE" --wait
+velero restore create "$RESTORE" --from-backup "$BACKUP" --wait
+velero restore describe "$RESTORE" --details
+kubectl get configmap restore-proof --namespace "$NAMESPACE" -o jsonpath='{.data.payload}'
+# Confirme que o comando imprimiu "restored" e que o restore concluiu antes de limpar.
+kubectl delete namespace "$NAMESPACE" --wait
+velero restore delete "$RESTORE" --confirm
+velero backup delete "$BACKUP" --confirm
+```
+
+Se backup ou restore não chegar a `Completed`, veja `velero backup logs "$BACKUP"` ou
+`velero restore logs "$RESTORE"`, além do status do `BackupStorageLocation`. Corrija a identidade,
+o container, a rede ou o RBAC antes de repetir. `velero backup delete` remove os dados do object
+storage; apagar só o objeto Kubernetes com `kubectl delete backup` deixa o blob e a cobrança.
+
+Ao atualizar um lab criado antes do contrato v3: `Monitoring Metrics Publisher` e
+`Storage Blob Data Contributor` entraram na lista ABAC de `tx02v2-gha-apply`, então aplique o bootstrap
+de novo (seção 2) antes do apply.
 
 Localmente (seu object ID em `cluster_admin_principal_ids`, seu IP nos ranges e um papel de leitura na
 App Configuration, como o Data Owner da seção 4):
@@ -207,9 +264,12 @@ kubectl -n dx02v2 get role,rolebinding
 ## 6. Deploy do app (dx02v2)
 
 Siga o runbook do dx02v2: com as variáveis da seção 3, o workflow `deploy-azure` lê as 15 chaves
-`tx02v2/lab/*`, publica `dx02v2/api` e `dx02v2/web` no ACR (tag = SHA do commit, nunca sobrescrita),
-cria o ConfigMap `azure-pg-ca`, aplica o overlay `azure-waf` (ou `azure`, quando `waf/policy-id` é
-`none`) no namespace `dx02v2` e roda o smoke test pelo Application Gateway for Containers.
+`tx02v2/lab/*`, publica `dx02v2/api` e `dx02v2/web` no ACR (tag = SHA do commit, nunca sobrescrita)
+e cria o ConfigMap `azure-pg-ca`. Com o perfil `full`, `mode=gitops` (padrão) configura na Application
+viva o overlay `azure-waf` (ou `azure`, quando `waf/policy-id` é `none`), as imagens e os parâmetros
+reais; a branch pública recebe apenas exemplos. O workflow espera o Argo CD sincronizar, os
+ExternalSecrets e os rollouts, depois roda o smoke test pelo Application Gateway for Containers.
+Com o perfil `core` ou sem Argo CD, escolha `mode=push` para aplicar diretamente o overlay.
 
 Para fazer o deploy de um laptop, coloque o seu object ID em `LAB_APP_DEPLOYER_PRINCIPAL_IDS`, rode o
 apply (papéis Azure de `dx02v2-gha-deploy` para você) e o `platform` de novo (RoleBinding).

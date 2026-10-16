@@ -1,0 +1,23 @@
+# Overlay of platform/local/values/gatekeeper.yaml for the profile full in the cloud (same chart, same
+# images by digest, same sizes). The webhook fails closed, but never for the namespaces of the cluster
+# and of the platform: with Gatekeeper down they must still start their pods. The local lab exempts
+# namespaces that only exist on kind (local-path-storage, lab-system, lab-secrets); the cloud exempts
+# observability (the Collector), AKS's ALB controller namespace, and platform namespaces whose
+# admission/webhook pods must recover if Gatekeeper is unavailable. The app stays covered.
+validatingWebhookExemptNamespacesLabels:
+  kubernetes.io/metadata.name:
+    - kube-system
+    - kube-public
+    - kube-node-lease
+    - azure-alb-system
+    - azure-alb-system
+    - istio-system
+    - cert-manager
+    - external-secrets
+    - monitoring
+    - monitoring-agents
+    - observability
+    - argocd
+    - trivy-system
+    - velero
+    - chaos-mesh

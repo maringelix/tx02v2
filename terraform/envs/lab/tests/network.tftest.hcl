@@ -48,6 +48,14 @@ run "vnet_and_subnets" {
   }
 
   assert {
+    condition = (
+      length(azurerm_subnet.aks_nodes.service_endpoint) == 1 &&
+      azurerm_subnet.aks_nodes.service_endpoint[0].service == "Microsoft.Storage"
+    )
+    error_message = "The AKS node subnet uses the Storage service endpoint for the Velero account firewall rule."
+  }
+
+  assert {
     condition     = one(azurerm_subnet.agc.delegation[0].service_delegation).name == "Microsoft.ServiceNetworking/trafficControllers"
     error_message = "The AGC subnet must be delegated to Microsoft.ServiceNetworking/trafficControllers."
   }

@@ -3,27 +3,32 @@
 # replaced. Used by platform/install.sh (| kubectl apply -f -) and by the harness
 # (| kubeconform, contract-platform), so what is validated is exactly what gets applied. Needs no
 # cluster.
-# Usage: platform/render-manifests.sh <keyvault-uri> <deployer-object-id>[,<object-id>...]
+# Usage: platform/render-manifests.sh <keyvault-uri> <deployer-object-id>[,<object-id>...] [--full <github-owner> --acr-login-server <host>] [--only <file>]
 #   keyvault-uri        contract key keyvault/uri, e.g. https://tx02v2-lab-0a1b2c3d.vault.azure.net/
 #   deployer object IDs contract key deploy/principal-id first, then app_deployer_principal_ids
 # Placeholders are replaced only in their one allowed position (a value would otherwise leak
 # into comments or break the YAML):
 #   a line that is exactly __DEPLOYER_SUBJECTS__   -> one `kind: User` subject per object ID
 #   `vaultUrl: __KEYVAULT_URI__`                     -> the Key Vault URI
+# --full also renders Argo CD repositories and the ACR constraint from the fork/contract.
 # Any other __NAME__ token left in the output is an error.
 set -euo pipefail
 
 GUID_RE='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 VAULT_RE='^https://[a-z0-9-]{3,24}\.vault\.azure\.net/?$'
+OWNER_RE='^[A-Za-z0-9]([A-Za-z0-9-]{0,38})$'
+ACR_RE='^[a-z0-9]{5,50}\.azurecr\.io$'
+DX_REVISION=gitops/azure
 
 usage() {
-  echo "usage: $0 <keyvault-uri> <deployer-object-id>[,<object-id>...]" >&2
+  echo "usage: $0 <keyvault-uri> <deployer-object-id>[,<object-id>...] [--full <github-owner> --acr-login-server <host>] [--only <file>]" >&2
   exit 2
 }
 
 main() {
-  (($# == 2)) || usage
-  local vault_uri=$1 ids=$2 dir f id line n name subjects="" out=""
+  (($# >= 2)) || usage
+  local vault_uri=$1 ids=$2 dir f id line n name subjects="" out="" owner="" acr="" only="" full=0 tx_repo_url="" dx_repo_url=""
+  shift 2
   [[ "$vault_uri" =~ $VAULT_RE ]] || {
     echo "error: '$vault_uri' is not a Key Vault URI (https://<name>.vault.azure.net/)" >&2
     exit 2
@@ -40,15 +45,49 @@ main() {
     subjects+="  - kind: User"$'\n'"    name: $id"$'\n'"    apiGroup: rbac.authorization.k8s.io"$'\n'
   done
 
+  while (($# > 0)); do
+    case "$1" in
+      --full)
+        [[ "${2:-}" =~ $OWNER_RE ]] || usage
+        owner=$2
+        full=1
+        shift 2
+        ;;
+      --acr-login-server)
+        [[ "${2:-}" =~ $ACR_RE ]] || usage
+        acr=$2
+        shift 2
+        ;;
+      --only)
+        [[ "${2:-}" =~ ^[a-z0-9-]+(/[a-z0-9-]+)*\.yaml$ ]] || usage
+        only=$2
+        shift 2
+        ;;
+      *) usage ;;
+    esac
+  done
+  if ((full == 1)); then
+    [[ -n "$acr" ]] || usage
+    tx_repo_url="https://github.com/$owner/tx02v2.git"
+    dx_repo_url="https://github.com/$owner/dx02v2.git"
+  else
+    [[ -z "$acr" && -z "$only" ]] || usage
+  fi
+
   dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/manifests"
   shopt -s nullglob
   local -a files=("$dir"/*.yaml)
+  ((full == 0)) || files+=("$dir"/full/*.yaml)
+  if [[ -n "$only" ]]; then
+    [[ -f "$dir/$only" ]] || usage
+    files=("$dir/$only")
+  fi
   ((${#files[@]} > 0)) || {
     echo "error: no manifests in $dir" >&2
     exit 1
   }
   for f in "${files[@]}"; do
-    name="platform/manifests/${f##*/}"
+    name="platform/manifests/${f#"$dir"/}"
     out+="---"$'\n'"# Source: $name"$'\n'
     n=0
     while IFS= read -r line || [[ -n "$line" ]]; do
@@ -56,6 +95,12 @@ main() {
       if [[ "$line" == "__DEPLOYER_SUBJECTS__" ]]; then
         out+="$subjects"
         continue
+      fi
+      if ((full == 1)); then
+        line="${line//__TX_REPO_URL__/$tx_repo_url}"
+        line="${line//__DX_REPO_URL__/$dx_repo_url}"
+        line="${line//__DX_REVISION__/$DX_REVISION}"
+        line="${line//__ACR_LOGIN_SERVER__/$acr}"
       fi
       if [[ "$line" =~ ^([[:space:]]*vaultUrl:[[:space:]]+)__KEYVAULT_URI__$ ]]; then
         line="${BASH_REMATCH[1]}$vault_uri"

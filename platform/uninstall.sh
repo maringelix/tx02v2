@@ -9,7 +9,8 @@
 #      objects exist (an ALB-managed deployment someone added by hand), deletes them and waits
 #      until the AGC resources the controller created for them are gone from Azure;
 #   3. deletes Services of type LoadBalancer (their public IPs live in the AKS node resource group);
-#   4. uninstalls the OpenTelemetry Collector, the External Secrets Operator and the ALB Controller
+#   4. stops Argo CD reconciliation before removing routes, then uninstalls the full profile releases
+#      (when present) and the External Secrets Operator and ALB Controller
 #      releases.
 # CLOUD-MUTATING. Fails loudly on any error or timeout. Needs the same tools as platform/install.sh.
 # The resource group and the cluster are the contract names (tx02v2-lab), so the teardown does not
@@ -78,6 +79,34 @@ delete_load_balancer_services() {
   done <<<"$out"
 }
 
+# stop_gitops -> stop both Applications before deleting routes. The parent syncs the GitOps chart;
+# deleting it first prevents it from recreating the dx02v2 Application while the child is removed.
+stop_gitops() {
+  crd_exists applications.argoproj.io || return 0
+  log "stopping the Argo CD app-of-apps and dx02v2 Application"
+  kubectl delete applications.argoproj.io platform --namespace argocd --ignore-not-found --wait=true --timeout=5m
+  kubectl delete applications.argoproj.io dx02v2 --namespace argocd --ignore-not-found --wait=true --timeout=5m
+  kubectl delete appprojects.argoproj.io platform dx02v2 --namespace argocd --ignore-not-found --wait=true --timeout=5m
+}
+
+uninstall_full_releases() {
+  helm uninstall chaos-mesh --namespace chaos-mesh --ignore-not-found --wait=watcher --timeout 10m
+  helm uninstall velero --namespace velero --ignore-not-found --wait=watcher --timeout 10m
+  helm uninstall trivy-operator --namespace trivy-system --ignore-not-found --wait=watcher --timeout 10m
+  helm uninstall gatekeeper --namespace gatekeeper-system --ignore-not-found --wait=watcher --timeout 10m
+  helm uninstall argo-cd --namespace argocd --ignore-not-found --wait=watcher --timeout 10m
+  helm uninstall opentelemetry-collector --namespace observability --ignore-not-found --wait=watcher --timeout 10m
+  helm uninstall tempo --namespace monitoring --ignore-not-found --wait=watcher --timeout 10m
+  helm uninstall alloy --namespace monitoring --ignore-not-found --wait=watcher --timeout 10m
+  helm uninstall loki --namespace monitoring --ignore-not-found --wait=watcher --timeout 10m
+  helm uninstall kube-prometheus-stack --namespace monitoring --ignore-not-found --wait=watcher --timeout 10m
+  helm uninstall ztunnel --namespace istio-system --ignore-not-found --wait=watcher --timeout 10m
+  helm uninstall istio-cni --namespace istio-system --ignore-not-found --wait=watcher --timeout 10m
+  helm uninstall istiod --namespace istio-system --ignore-not-found --wait=watcher --timeout 10m
+  helm uninstall istio-base --namespace istio-system --ignore-not-found --wait=watcher --timeout 10m
+  helm uninstall cert-manager --namespace cert-manager --ignore-not-found --wait=watcher --timeout 10m
+}
+
 # controller_agcs NODE_RG -> Application Gateway for Containers resources the controller created
 # (ALB-managed deployment) that still exist, one per line.
 controller_agcs() {
@@ -124,6 +153,8 @@ main() {
   kubectl get --raw /readyz >/dev/null ||
     die "the API server of $CLUSTER_NAME is not reachable from here (api_server_authorized_ip_ranges) or this identity is not in cluster_admin_principal_ids"
 
+  stop_gitops
+
   # Routes first, then the Gateways they attach to, then the policies that target either.
   delete_all httproutes.gateway.networking.k8s.io
   delete_all grpcroutes.gateway.networking.k8s.io
@@ -139,7 +170,7 @@ main() {
   delete_load_balancer_services
 
   log "uninstalling the platform releases"
-  helm uninstall opentelemetry-collector --namespace observability --ignore-not-found --wait=watcher --timeout 10m
+  uninstall_full_releases
   helm uninstall external-secrets --namespace external-secrets --ignore-not-found --wait=watcher --timeout 10m
   helm uninstall alb-controller --namespace azure-alb-system --ignore-not-found --wait=watcher --timeout 10m
   log "platform removed from $CLUSTER_NAME"

@@ -39,6 +39,12 @@ EOF
   cat >"$bin/kubectl" <<'EOF'
 #!/usr/bin/env bash
 echo "kubectl $*" >>"$FAKE_STATE/calls.log"
+if [[ "${FAKE_GITOPS:-0}" == 1 ]]; then
+  case "$*" in
+    *"get crd applications.argoproj.io"*) echo customresourcedefinition.apiextensions.k8s.io/applications.argoproj.io ;;
+    *"get crd httproutes.gateway.networking.k8s.io"*) echo customresourcedefinition.apiextensions.k8s.io/httproutes.gateway.networking.k8s.io ;;
+  esac
+fi
 if [[ "$*" == "get --raw /readyz" && "${FAKE_API_DOWN:-0}" == 1 ]]; then
   echo "the connection to the server was refused" >&2
   exit 1
@@ -123,6 +129,13 @@ main() {
     "$(ordered healthy 'helm uninstall' 'terraform .*destroy')"
   expect healthy "no warning about the uninstall" \
     "$(if grep -qF 'did not finish' "$WORK/healthy.out"; then echo 1; else echo 0; fi)"
+
+  # 1b. With Argo CD installed, its parent and child Applications stop before Gateway routes are removed.
+  run_case gitops 0 FAKE_GITOPS=1
+  expect gitops "the Argo CD app-of-apps stops before the dx02v2 Application" \
+    "$(ordered gitops 'kubectl delete applications.argoproj.io platform' 'kubectl delete applications.argoproj.io dx02v2')"
+  expect gitops "GitOps stops before route cleanup so self-heal cannot recreate a Gateway" \
+    "$(ordered gitops 'kubectl delete applications.argoproj.io platform' 'kubectl delete httproutes.gateway.networking.k8s.io')"
 
   # 2. The API server is unreachable: the uninstall fails, the destroy still runs and the run passes.
   run_case api-down 0 FAKE_API_DOWN=1

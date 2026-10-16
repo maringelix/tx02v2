@@ -11,14 +11,14 @@ cobre o app (ver `dx02v2`), mas lista o que precisa mudar junto com ele.
 
 ## 2. Estado atual
 
-- Harness completo (`HARNESS_STRICT=1 make verify`) `verificado no CI` com 32 checks (jobs `static`
+- Harness completo na `main` (`HARNESS_STRICT=1 make verify`): última validação em CI com 32 checks; os checks novos do perfil full são verificados neste PR e seguem para GitHub Actions antes do merge. O conjunto do lab local mantém a validação local em container Linux.
   e `test` verdes no GitHub); com os checks do lab local são 38, `verificado localmente` em container
   Linux (o CI ainda não rodou essa versão).
 - Lab local (`docs/LAB_LOCAL.md`): `make e2e` com o perfil `full` (34 sondas) `verificado no CI`
   (job `e2e`); `verificado localmente` em 2026-10-13 (`full`, 26 sondas de então, destroy sem sobras)
   e 2026-10-14 (`observability`, com traces e Slack).
 - Bootstrap, apply, plan em PRs, plataforma e destroy: `não executado em nuvem (v2)`.
-- Contrato com o dx02v2: versão 2 de 2026-10-14, com o endpoint OTLP do Collector (`docs/CONTRATO.md`).
+- Contrato com o dx02v2: versão 3 de 2026-10-16; inclui labels ambient/Gatekeeper, GitOps e Velero Azure (`docs/CONTRATO.md`).
 
 ## 3. Rotinas
 
@@ -54,6 +54,7 @@ cobre o app (ver `dx02v2`), mas lista o que precisa mudar junto com ele.
 | Exceções do trivy | 2 entradas (`AZU-0012`, `AZU-0013`) | 2027-04-30 | `.trivyignore.yaml` | Revisar até abril de 2027 (5.9) |
 | Istio (lab local) | 1.31.1 | ~2027-02 (6 semanas depois da 1.33) | [releases suportadas](https://istio.io/latest/docs/releases/supported-releases/) | Trimestral (5.12), junto com o tx01v2 |
 | Demais charts do lab local | `platform/local/versions.env` (cert-manager 1.21.2, kube-prometheus-stack 92.3.0, Loki 7.3.0, Alloy 1.13.1, Tempo 3.1.0, OpenTelemetry Collector 0.176.0, Argo CD 10.10.3, Gatekeeper 3.23.1, Trivy Operator 0.37.0, Velero 12.2.1, Chaos Mesh 2.8.4, metrics-server 3.14.0) | cada projeto mantém as versões recentes | releases de cada projeto | Trimestral (5.12), junto com o tx01v2 |
+| Charts do perfil full cloud | `platform/full/charts.txt`, com os pins locais e o Collector cloud; o plugin Velero Azure v1.14.4 tem digest fixado em `platform/values/full/velero.yaml` | cada projeto mantém as versões recentes | releases oficiais de cada projeto | Trimestral (5.13), junto com tx01v2 |
 | Imagens dos serviços emulados | registry 3.1.2, Versity S3 Gateway 1.8.0, Soft Serve 0.12.3, cloud-provider-kind 0.12.0, PostgreSQL 17 | sem data fixa | `terraform/envs/local/images.tf` | Trimestral (5.12) |
 | kind / gator | 0.33.0 (nó `kindest/node:v1.36.4`) / 3.23.1 | sem política publicada | releases do kind e do Gatekeeper | Trimestral (5.12); o nó segue o minor do AKS do lab |
 
@@ -204,6 +205,20 @@ Os pins são os mesmos do lab local do `tx01v2`: atualize os dois repositórios 
    nó do kind (`terraform/envs/local/kind-config.yaml`) segue o `kubernetes_version` do lab
    (`local-versions` confere o minor).
 5. Rode `make verify` e `make e2e` (ou deixe o job `e2e` do CI provar no PR) e registre no CHANGELOG.
+
+### 5.13 Perfil cloud full e plugin Velero Azure
+
+O inventário `platform/full/charts.txt` reutiliza versões, SHA256 de charts e digests de imagens do
+lab local; os overlays Azure ficam em `platform/values/full`. Antes de atualizar, renderize todos os
+charts com `helm-template-full`, confira namespaces, ServiceAccounts e digests, e compare os pins com
+o tx01v2. Mudanças na branch, caminho do overlay ou permissões GitOps também exigem atualização
+coordenada do contrato no dx02v2.
+
+O plugin `velero-plugin-for-microsoft-azure` é fixado em v1.14.4 com digest na overlay. Atualizações
+devem revisar a release oficial, o uso de Workload ID e `useAAD`, e as variáveis
+`AZURE_RESOURCE_GROUP` e `storageAccountURI`. O render de Helm prova a configuração, não o acesso
+real ao Blob nem o restore. Mantenha `Storage Blob Data Contributor` no escopo do container e o
+lifecycle de 35 dias.
 
 ## 6. Resposta a problemas
 

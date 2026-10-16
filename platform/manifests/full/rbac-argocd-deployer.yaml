@@ -1,0 +1,25 @@
+# What the deploy role of dx02v2 may do in Argo CD (docs/CONTRATO.md): read the Application dx02v2 and
+# ask it to refresh (an annotation), nothing else and nothing in any other Application. AKS identifies
+# the deploy principal as a User, so this RoleBinding receives the rendered User subjects.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dx02v2-gitops-sync
+  namespace: argocd
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    resourceNames: ["dx02v2"]
+    verbs: ["get", "watch", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dx02v2-gitops-sync
+  namespace: argocd
+subjects:
+__DEPLOYER_SUBJECTS__
+roleRef:
+  kind: Role
+  name: dx02v2-gitops-sync
+  apiGroup: rbac.authorization.k8s.io

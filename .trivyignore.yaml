@@ -2,6 +2,15 @@
 # `statement` and an `expired_at` at most ~7 months ahead; scripts/harness.sh enforces both and
 # trivy stops honoring an entry after its expiry date.
 misconfigurations:
+  - id: AZU-0010
+    paths:
+      - terraform/modules/velero/main.tf
+    statement: >-
+      Velero is the only consumer of this account and runs in AKS; the AKS node subnet is explicitly
+      allowed through the Microsoft.Storage service endpoint. No Azure trusted service needs access,
+      so a general AzureServices bypass would widen the network exception without a consumer. Entra
+      ID and the container-scoped data role remain required.
+    expired_at: 2027-04-16
   - id: AZU-0012
     paths:
       - terraform/bootstrap/state.tf

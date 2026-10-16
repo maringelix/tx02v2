@@ -115,6 +115,11 @@ Before the first apply:
   biggest item), the AKS nodes and PostgreSQL Flexible Server bill by the hour while the lab is up.
   The bootstrap creates a monthly budget with alerts, but a budget only warns, it stops nothing.
   Destroy on the same day.
+- The `core` profile is the default: about US$0.513/hour with WAF (US$0.389/hour without). The
+  optional `full` profile is about US$0.524/hour with WAF (US$0.400/hour without) using two
+  `Standard_D2as_v5` nodes; 3 hours are about US$1.57 (US$1.20 without WAF). These are estimates,
+  exclude telemetry and Blob usage, and are not measured cloud costs. Choose `core` or `full` in the
+  `platform` workflow and follow the matching size settings in `docs/RUNBOOK.md`.
 - **Free Trial subscriptions restrict this lab**: v1 found PostgreSQL Flexible Server blocked in every
   region tried, AKS VM sizes refused and low quotas that cannot be raised
   ([docs/RUNBOOK.md](docs/RUNBOOK.md), section 1, and [docs/LICOES_APRENDIDAS.md](docs/LICOES_APRENDIDAS.md)).
@@ -171,7 +176,10 @@ Then, from the root of your `tx02v2` clone:
 3. **Run**: from the Actions tab, `terraform-plan`, `terraform-apply` and `platform` (each one waits
    for your approval of the `lab` environment), the app deploy from your `dx02v2`, the smoke test,
    then `terraform-destroy`, which ends with the leftover check: [docs/RUNBOOK.md](docs/RUNBOOK.md),
-   sections 4 to 9. The workflows take `github_owner` from the owner of the repository.
+   sections 4 to 9. The workflows take `github_owner` from the owner of the repository. For the full
+   platform profile, set `LAB_NODE_VM_SIZE=Standard_D2as_v5` and `LAB_NODE_COUNT=2` before plan and
+   apply; keep these values through destroy. The workflows pass them to plan/apply/destroy, while
+   unset values preserve the cheaper core defaults.
 
 Your fork is public, and so are its workflow logs. The workflows mask the tenant, subscription and
 client IDs ([docs/GUARDRAILS.md](docs/GUARDRAILS.md), CI-07); never paste credentials or those IDs

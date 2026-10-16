@@ -35,14 +35,14 @@ The lab family (v2):
 | Lint and IaC security scan (tflint + azurerm ruleset, trivy HIGH/CRITICAL, plain and with the example inputs) | `verified in CI` | `make static` (`tflint`, `trivy-config`, `trivy-config-tfvars`) |
 | Workflows, scripts, platform manifests and Helm values (actionlint, shellcheck, kubeconform, helm template with the chart SHA256) | `verified in CI` | `make static` (`actionlint`, `shellcheck`, `kubeconform`, `helm-template`) |
 | Secret scan and repository policies (no real identifiers or GUIDs, pinned actions, contract tags on every taggable resource, scripts that act only on the lab, v1 regressions) | `verified in CI` | `make static` (`gitleaks`, `policy-*`, `repo-structure`, `version-consistency`) |
-| Contract v2 with dx02v2 (15 App Configuration keys, namespaces `dx02v2` and `observability`, deployer RBAC, ClusterSecretStore, OTLP endpoint of the Collector) | `verified in CI` | `make static` (`contract-appconfig`, `contract-platform`); [docs/CONTRATO.md](docs/CONTRATO.md) |
-| Terraform unit tests with a mocked azurerm provider (OIDC subjects, state account, ABAC role list = lab roles, budget, AKS, PostgreSQL, Key Vault, ACR, AGC + WAF, contract keys, role assignments, Application Insights with Entra ID ingestion only, negative validations; 75 runs) | `verified in CI` | `make test`; CI job `test` |
+| Contract v3 with dx02v2 (15 App Configuration keys, ambient namespace labels, Gatekeeper enforcement, GitOps and Azure Blob backup contract) | `verified locally` | `make static`; [docs/CONTRATO.md](docs/CONTRATO.md) |
+| Terraform unit tests with a mocked azurerm provider (OIDC subjects, state account, ABAC role list = lab roles, budget, AKS, PostgreSQL, Key Vault, ACR, AGC + WAF, Velero Blob, contract keys, role assignments, Application Insights with Entra ID ingestion only, negative validations; 76 runs) | `verified locally` | `make test`; CI job `test` |
 | Bootstrap (resource providers, state account, lab resource group, GitHub OIDC identities, budget) | `not run in the cloud (v2)` | `terraform/bootstrap`, `docs/RUNBOOK.md` |
 | Lab apply (VNet, AKS 1.36, PostgreSQL 17, Key Vault, ACR, AGC + WAF, App Configuration contract) | `not run in the cloud (v2)` | `.github/workflows/terraform-apply.yml` |
 | Plan on pull requests | `not run in the cloud (v2)` | `.github/workflows/terraform-plan.yml` |
-| Platform layer (ALB Controller 1.12.2, External Secrets Operator 2.12.0, OpenTelemetry Collector 0.162.0 sending the traces of the app to Application Insights with Workload ID) | `not run in the cloud (v2)` | `.github/workflows/platform.yml`, `platform/install.sh`; the charts are rendered by `helm-template` |
+| Platform layer (`core` or `full`): core controllers plus 15 pinned charts in full (ambient Istio, observability, Argo CD GitOps, Gatekeeper, Trivy, Velero Azure Blob, Chaos Mesh) | `not run in the cloud (v2)` | `.github/workflows/platform.yml`; `helm-template-full` renders every real pinned chart |
 | Destroy + leftover check | `not run in the cloud (v2)` | `.github/workflows/terraform-destroy.yml`, `scripts/leftovers.sh` |
-| HTTPS on the Application Gateway for Containers listener | `planned` | outside contract v2 (`docs/CONTRATO.md`) |
+| HTTPS on the Application Gateway for Containers listener | `planned` | outside contract v3 (`docs/CONTRATO.md`) |
 | Repository settings as code (ruleset, environment `lab`) | `verified locally` | `scripts/repo-guardrails.sh` applied; read back with `gh api` on 2026-10-14 (`docs/PUBLICACAO.md`) |
 | **Local lab, static checks**: `terraform/envs/local` plan tests (private network, labels, loopback-only registry, TLS-only database, digests, negative validations; 10 runs), 15 local charts by SHA256 rendering digests and ClusterIP only, Gatekeeper policies against their gator cases | `verified locally` | `terraform-test:envs/local`, `helm-template-local`, `kubeconform-local`, `policy-gator`, `local-versions` |
 | **Local lab** (Terraform on Docker): kind cluster + emulated ACR, PostgreSQL (TLS only), Blob Storage (S3 API emulator), load balancer, git server; destroy + leftover check | `verified in CI` | `make e2e` (`terraform/envs/local`, `scripts/local-lab.sh`) |
@@ -56,7 +56,7 @@ The lab family (v2):
 | In-cluster scanning: Trivy Operator (vulnerability and configuration reports) | `verified in CI` | `make e2e` |
 | Backup and restore drill: Velero to the object storage emulator (namespace deleted, restored with its data) | `verified in CI` | `make e2e` |
 | Chaos engineering with hypotheses: Chaos Mesh pod kill, 100 ms network latency, CPU and memory stress; availability, latency and restarts measured | `verified in CI` | `make e2e` |
-| The same add-ons on AKS | `planned` | the local platform shows the target; the cloud platform layer installs only the ALB Controller, ESO and the OpenTelemetry Collector |
+| The Azure full profile on AKS | `not run in the cloud (v2)` | `platform --profile full` installs 15 pinned charts with Azure overlays; `helm-template-full` verifies chart renders, not runtime behavior |
 
 `verified in CI` rows (`HARNESS_STRICT=1 make verify`) run on every pull request, on every
 push to `main` and weekly (CI jobs `static` and `test`). A cloud row changes only with a
@@ -147,6 +147,10 @@ Follow [docs/RUNBOOK.md](docs/RUNBOOK.md): bootstrap → GitHub variables of tx0
 apply → platform → deploy dx02v2 → smoke test → destroy → leftover check (locally, as the
 subscription Owner) → `cloud_run_report` issue.
 
+### Full platform profile
+
+The `platform` workflow offers `core` and `full`. The full profile installs 15 charts pinned by version, package SHA256 and image digests. It includes ambient Istio, Prometheus, Alertmanager, Grafana, Loki, Alloy, Tempo, Collector, Argo CD GitOps, Gatekeeper, Trivy, Velero on private Azure Blob, and Chaos Mesh. Set `LAB_NODE_VM_SIZE=Standard_D2as_v5` and `LAB_NODE_COUNT=2` before apply for sizing. Costs and limits are in [docs/CUSTOS.md](docs/CUSTOS.md). The charts were rendered locally; Azure execution remains `not run in the cloud (v2)`.
+
 ## Harness
 
 | Target | What it runs | When |
@@ -170,7 +174,7 @@ All docs are in Brazilian Portuguese.
 |---|---|
 | [FORK.md](FORK.md) | fork the lab: what GitHub does not copy, the local lab, your own cloud account |
 | [docs/ARQUITETURA.md](docs/ARQUITETURA.md) | diagram, ADRs, AWS ↔ Azure, v1 → v2 |
-| [docs/CONTRATO.md](docs/CONTRATO.md) | tx02v2 ⇄ dx02v2 contract v2 (source of truth) |
+| [docs/CONTRATO.md](docs/CONTRATO.md) | tx02v2 ⇄ dx02v2 contract v3 (source of truth) |
 | [docs/RUNBOOK.md](docs/RUNBOOK.md) | full cloud round |
 | [docs/LAB_LOCAL.md](docs/LAB_LOCAL.md) | the local lab: what is emulated, how to run it, probes, limits |
 | [docs/CUSTOS.md](docs/CUSTOS.md) | cost estimate per component, with and without the WAF |

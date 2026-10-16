@@ -1,0 +1,47 @@
+# Azure Storage counterpart of the local lab's S3-compatible Velero location. The Azure plugin uses
+# Entra Workload ID and the Blob endpoint directly, so it does not need an account key or Reader on
+# the storage account. platform/install.sh renders the identity, subscription, node resource group,
+# and storage endpoint into this overlay before Helm sees it.
+podLabels:
+  azure.workload.identity/use: "true"
+serviceAccount:
+  server:
+    annotations:
+      azure.workload.identity/client-id: __VELERO_CLIENT_ID__
+initContainers:
+  - name: velero-plugin-for-microsoft-azure
+    image: docker.io/velero/velero-plugin-for-microsoft-azure:v1.14.4@sha256:a23aa46eae095bd960bedca3e94131ef237f4f0aaa4c2ae1492d9e03a8e2cdb2
+    imagePullPolicy: IfNotPresent
+    volumeMounts:
+      - mountPath: /target
+        name: plugins
+    resources:
+      requests:
+        cpu: 10m
+        memory: 16Mi
+      limits:
+        memory: 64Mi
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: [ALL]
+credentials:
+  useSecret: false
+  existingSecret: ""
+configuration:
+  backupStorageLocation:
+    - name: default
+      provider: azure
+      bucket: tx02v2-lab-velero
+      default: true
+      config:
+        useAAD: "true"
+        storageAccountURI: __VELERO_STORAGE_ACCOUNT_URI__
+  extraEnvVars:
+    - name: AZURE_SUBSCRIPTION_ID
+      value: __AZURE_SUBSCRIPTION_ID__
+    - name: AZURE_RESOURCE_GROUP
+      value: __AKS_NODE_RESOURCE_GROUP__
+    - name: AZURE_CLOUD_NAME
+      value: AzurePublicCloud

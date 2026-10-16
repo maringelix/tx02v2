@@ -1,7 +1,8 @@
-# Contrato tx02v2 <-> dx02v2 — versão 2 (2026-10-14)
+# Contrato tx02v2 <-> dx02v2 — versão 3 (2026-10-16)
 
-Versão 2: o OpenTelemetry Collector da camada de plataforma (namespace `observability`, traces para o
-Application Insights `tx02v2-lab-traces`). A versão 1 (2026-10-11) não tinha traces.
+Versão 3: labels ambient e Gatekeeper no namespace do app, GitOps com Argo CD no perfil full e backup
+Azure Blob com Workload ID. As 15 chaves da App Configuration não mudam. A versão 2 adicionou traces
+pelo OpenTelemetry Collector.
 
 Interface entre a infraestrutura (este repositório) e a aplicação (`dx02v2`). Esta é a fonte da
 verdade: `dx02v2/docs/CONTRATO.md` repete a parte que o app usa e aponta para cá. Qualquer mudança
@@ -16,6 +17,8 @@ serviços equivalentes da Azure.
 | Identidades do GitHub: nomes, issuer, audience e um sujeito exato por credencial federada | `terraform/bootstrap/tests/identities.tftest.hcl` | `verificado localmente` |
 | Papéis do plan e do apply; a condição ABAC do apply lista exatamente os papéis que o root do lab atribui | `terraform/bootstrap/tests/roles.tftest.hcl`, `terraform/envs/lab/tests/roles.tftest.hcl` | `verificado localmente` |
 | Papéis de `dx02v2-gha-deploy`, dos `app_deployer_principal_ids`, do ESO, do ALB Controller, do OpenTelemetry Collector e do kubelet | `terraform/envs/lab/tests/roles.tftest.hcl` | `verificado localmente` |
+| Velero: identidade federada, Blob privado, firewall `Deny` com acesso só pela subnet AKS, lifecycle de 35 dias e role de dados no container | `terraform/envs/lab/tests/roles.tftest.hcl`, `terraform/envs/lab/tests/network.tftest.hcl`, `helm-template-full` | `verificado localmente` |
+| GitOps: app-of-apps do Argo CD, branch `gitops/azure` e RoleBinding restrita do deployer | `contract-platform`, `helm-template-full` | `verificado localmente` |
 | Application Insights dos traces só com ingestão por Entra ID (autenticação local desligada), workspace e limites diários | `terraform/envs/lab/tests/roles.tftest.hcl` (`traces_accept_only_entra_id_ingestion`) | `verificado localmente` |
 | Collector no namespace `observability`, exporter do Azure Monitor com Entra ID, mesmo digest do lab local | checks `contract-platform` e `helm-template` | `verificado localmente` |
 | As 15 chaves da App Configuration (prefixo, valores fixos, origem de cada valor) | `terraform/envs/lab/tests/lab.tftest.hcl`; o check `contract-appconfig` confere que `contract.tf` e a lista do harness são iguais e que cada chave tem uma linha na tabela deste arquivo | `verificado localmente` |
@@ -50,7 +53,8 @@ serviços equivalentes da Azure.
 | Sufixo dos nomes globais | `suffix = substr(sha1(<subscription_id>), 0, 8)` (determinístico, sem random) |
 | Cluster AKS | `tx02v2-lab`, Kubernetes `1.36`, contas locais desligadas, Entra ID com Azure RBAC, OIDC issuer + workload identity, Azure CNI Overlay com dataplane Cilium (aplica NetworkPolicy) |
 | Nós | x86-64 (padrão `Standard_D2als_v6`): as imagens do dx02v2 são `linux/amd64`, então `node_vm_size` não pode ser um tamanho Arm64 (nada no código impede; é regra do contrato) |
-| Namespace do app | `dx02v2` — criado pela camada de plataforma do tx02v2 com os labels `pod-security.kubernetes.io/enforce=restricted`, `pod-security.kubernetes.io/enforce-version=latest` |
+| Namespace do app | `dx02v2` — criado pela plataforma com Pod Security `restricted`, Istio ambient (`istio.io/dataplane-mode=ambient`) e enforcement Gatekeeper (`policy.lab/enforce=true` no perfil full) |
+| NetworkPolicy do app com Istio ambient | O dataplane Cilium aplica as políticas; permitir HBONE em TCP 15008 entre pods na malha e as sondas do kubelet em `169.254.7.127/32` (ver `docs/ARQUITETURA.md`, ADR 41); o harness do `dx02v2` confere as regras |
 | Traces (OpenTelemetry, versão 2) | `http://opentelemetry-collector.observability.svc:4318` (OTLP/HTTP). O Collector é instalado pela camada de plataforma no namespace `observability` (mesmos labels de Pod Security) e grava os spans no Application Insights `tx02v2-lab-traces` (workspace `tx02v2-lab-traces`, autenticação local desligada) com a identidade `tx02v2-lab-otel` (Workload ID, sujeito `system:serviceaccount:observability:opentelemetry-collector`; só `Monitoring Metrics Publisher` nesse Application Insights). O app não recebe nenhum papel Azure para isso |
 | RBAC Kubernetes do deployer | Role `dx02v2-deployer` + RoleBinding `dx02v2-deployers` no namespace `dx02v2`; sujeito `kind: User`, `name: <object ID da identidade dx02v2-gha-deploy>` (mais os object IDs de `app_deployer_principal_ids`) |
 | ACR | nome `tx02v2lab<suffix>`, Basic, usuário admin e pull anônimo desligados; repositórios `dx02v2/api`, `dx02v2/web`; imagens com a tag do SHA git completo (40 caracteres) do dx02v2. O Basic não tem imutabilidade de tags no repositório inteiro: o deploy recusa sobrescrever uma tag existente. A identidade kubelet do AKS tem `AcrPull` no registry |
@@ -148,6 +152,34 @@ plan.
   do contrato, `serviceAccountRef` external-secrets/external-secrets), utilizável só a partir do
   namespace `dx02v2`.
 - Namespace `dx02v2`, Role e RoleBinding acima.
+
+### Perfil cloud full (R4)
+
+O workflow `platform` aceita `profile=core` (padrão) ou `profile=full`. O perfil full instala os 15
+charts de `platform/full/charts.txt`, todos fixados por versão, SHA256 do pacote e digests de imagem.
+Inclui Istio ambient; cert-manager; Prometheus, Alertmanager, Grafana, Loki, Alloy, Tempo e Collector;
+Argo CD; Gatekeeper; Trivy Operator; Velero; e Chaos Mesh. Os overlays Azure usam Azure Monitor e
+Blob em vez de X-Ray e S3.
+
+O app-of-apps do Argo CD acompanha `platform/gitops` no repositório público do tx02v2, branch `main`.
+A Application `dx02v2` acompanha o repositório público do app, branch `gitops/azure`, overlay
+`deploy/k8s/overlays/azure`, com sync automático, self-heal e prune. Argo CD não expõe LoadBalancer.
+A identidade de deploy pode fazer `get`, `watch` e `patch` apenas na Application `dx02v2`; não lista nem
+altera outras Applications.
+
+O workflow atualiza na Application viva o overlay, as imagens e os IDs/CIDRs da implantação. A
+Application `platform` ignora apenas `spec.source.path`, `spec.source.kustomize.images` e
+`spec.source.kustomize.patches` da Application `dx02v2`, para o self-heal do pai preservar esses
+valores. A branch pública `gitops/azure` recebe a revisão e parâmetros de exemplo; IDs e CIDRs reais
+permanecem no cluster.
+
+Velero usa o plugin Azure e Entra Workload ID para gravar recursos Kubernetes no container Blob
+privado do lab. Não cria snapshots de disco nem substitui o backup gerenciado do PostgreSQL. A role
+`Storage Blob Data Contributor` fica apenas no escopo do container; os blobs expiram após 35 dias.
+A Storage Account mantém endpoint público porque o AKS não usa Private Endpoint, mas o firewall nega
+por padrão e libera apenas a subnet dos nós AKS via service endpoint `Microsoft.Storage`. Não permite
+acesso anônimo e desliga as chaves compartilhadas. Backup e restore em Azure ainda não foram
+executados (`não executado em nuvem (v2)`).
 
 ## Runtime do app (dx02v2)
 

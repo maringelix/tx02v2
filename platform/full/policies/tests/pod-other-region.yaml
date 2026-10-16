@@ -1,0 +1,22 @@
+# Another registry: not the ACR of this fork.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: other-region
+  namespace: dx02v2
+  labels:
+    app.kubernetes.io/name: api
+spec:
+  containers:
+    - name: api
+      image: otheracr.azurecr.io/dx02v2/api:0000000000000000000000000000000000000000
+      readinessProbe:
+        httpGet:
+          path: /readyz
+          port: 3000
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          memory: 256Mi

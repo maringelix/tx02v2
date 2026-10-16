@@ -12,6 +12,8 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 # shellcheck source=scripts/lib/tools.sh
 source "$REPO_ROOT/scripts/lib/tools.sh"
+# shellcheck source=scripts/lib/platform.sh
+source "$REPO_ROOT/scripts/lib/platform.sh"
 
 export PATH="$REPO_ROOT/.tools/bin:$PATH"
 export TFLINT_PLUGIN_DIR="$REPO_ROOT/.tools/tflint-plugins"
@@ -101,7 +103,18 @@ REQUIRED_FILES=(
   scripts/destroy.sh scripts/tests/destroy-flow.sh scripts/tests/leftovers-flow.sh scripts/tests/local-preflight.sh
   scripts/lib/common.sh scripts/lib/tools.sh scripts/lib/azure.sh
   platform/install.sh platform/uninstall.sh platform/render-manifests.sh platform/versions.env
+  scripts/lib/platform.sh scripts/platform-sizing.sh scripts/platform-sizing.awk
   platform/values/alb-controller.yaml platform/values/external-secrets.yaml
+  platform/full/charts.txt platform/values/full/istiod.yaml platform/values/full/otel-collector.yaml
+  platform/values/full/kube-prometheus-stack.yaml platform/values/full/kube-prometheus-stack-slack.yaml
+  platform/values/full/gatekeeper.yaml platform/values/full/trivy-operator.yaml platform/values/full/velero.yaml
+  platform/manifests/full/argocd-platform.yaml platform/manifests/full/namespaces.yaml
+  platform/manifests/full/rbac-argocd-deployer.yaml platform/manifests/full/tracing.yaml
+  platform/gitops/Chart.yaml platform/gitops/values.yaml
+  platform/gitops/templates/application.yaml platform/gitops/templates/appproject.yaml
+  platform/full/policies/constraints/allowed-repos.yaml platform/full/policies/tests/pod-acr.yaml
+  platform/full/policies/tests/pod-other-region.yaml platform/full/policies/tests/suite.yaml
+  terraform/modules/velero/main.tf terraform/modules/velero/variables.tf terraform/modules/velero/outputs.tf terraform/modules/velero/versions.tf
   terraform/bootstrap/.terraform.lock.hcl terraform/envs/lab/.terraform.lock.hcl
   terraform/bootstrap/terraform.tfvars.example terraform/envs/lab/terraform.tfvars.example
   terraform/envs/lab/backend.hcl.example terraform/tests/mocks/azurerm.tfmock.hcl
@@ -231,6 +244,13 @@ tf_init() {
 render_platform() {
   local IFS=,
   bash platform/render-manifests.sh "$RENDER_VAULT_URI" "${RENDER_DEPLOYERS[*]}"
+}
+
+# render_platform_full -> cloud manifests plus full GitOps resources, with synthetic fork values.
+render_platform_full() {
+  local IFS=,
+  bash platform/render-manifests.sh "$RENDER_VAULT_URI" "${RENDER_DEPLOYERS[*]}" \
+    --full maringelix --acr-login-server tx02v2labb602d594.azurecr.io
 }
 
 # kubectl_local FILE GO_TEMPLATE -> evaluates the template on every object of FILE without any
@@ -776,9 +796,9 @@ trivy_config() {
   trivy config --quiet --skip-check-update --exit-code 1 --severity HIGH,CRITICAL \
     --cache-dir "$HARNESS_WORK_DIR/trivy-cache" --ignorefile .trivyignore.yaml \
     --skip-dirs .tools --skip-dirs .cache --skip-dirs '**/.terraform' \
-    --skip-dirs platform/local/policies/tests "$@"
-  # platform/local/policies/tests holds the gator fixtures: pods that break the policies on purpose
-  # (never applied to a cluster). Everything that is applied is scanned.
+    --skip-dirs platform/local/policies/tests --skip-dirs platform/full/policies/tests "$@"
+  # The policy test directories contain intentional gator fixtures (never applied to a cluster).
+  # Everything applied to a cluster is scanned.
 }
 
 check_trivy_config() {
@@ -962,7 +982,7 @@ check_shellcheck() {
 }
 
 check_kubeconform() {
-  local rendered="$HARNESS_WORK_DIR/platform-manifests.yaml"
+  local rendered="$HARNESS_WORK_DIR/platform-manifests.yaml" full="$HARNESS_WORK_DIR/platform-full-manifests.yaml"
   need kubeconform
   mkdir -p "$HARNESS_WORK_DIR/kubeconform-cache"
   render_platform >"$rendered"
@@ -971,7 +991,14 @@ check_kubeconform() {
     -cache "$HARNESS_WORK_DIR/kubeconform-cache" \
     -schema-location "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/$K8S_SCHEMA_REF/{{.NormalizedKubernetesVersion}}-standalone{{.StrictSuffix}}/{{.ResourceKind}}{{.KindSuffix}}.json" \
     -schema-location "https://raw.githubusercontent.com/datreeio/CRDs-catalog/$CRD_SCHEMA_REF/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json" \
-    "$rendered"
+    "$rendered" || return $?
+  render_platform_full >"$full"
+  kubeconform -strict -summary -output text -ignore-missing-schemas \
+    -kubernetes-version "$K8S_SCHEMA_KUBERNETES_VERSION" \
+    -cache "$HARNESS_WORK_DIR/kubeconform-cache" \
+    -schema-location "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/$K8S_SCHEMA_REF/{{.NormalizedKubernetesVersion}}-standalone{{.StrictSuffix}}/{{.ResourceKind}}{{.KindSuffix}}.json" \
+    -schema-location "https://raw.githubusercontent.com/datreeio/CRDs-catalog/$CRD_SCHEMA_REF/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json" \
+    "$full"
 }
 
 # The platform layer of contract v2, parsed from the rendered manifests (kubectl, no cluster):
@@ -979,7 +1006,7 @@ check_kubeconform() {
 # plus the Helm values and the pins of platform/versions.env.
 # shellcheck disable=SC2016 # Go templates of kubectl, not shell expansions
 check_contract_platform() {
-  local rc=0 rendered="$HARNESS_WORK_DIR/contract-platform.yaml" got want id key
+  local rc=0 rendered="$HARNESS_WORK_DIR/contract-platform.yaml" full_rendered="$HARNESS_WORK_DIR/contract-platform-full.yaml" got want id key
   need kubectl
   mkdir -p "$HARNESS_WORK_DIR"
   render_platform >"$rendered"
@@ -992,10 +1019,18 @@ check_contract_platform() {
   }
   for key in dx02v2 observability; do
     got="$(kubectl_local "$rendered" "{{if and (eq .kind \"Namespace\") (eq .metadata.name \"$key\")}}{{range \$k, \$v := .metadata.labels}}{{\$k}}={{\$v}}{{\"\\n\"}}{{end}}{{end}}")"
-    [[ "$got" == $'pod-security.kubernetes.io/enforce=restricted\npod-security.kubernetes.io/enforce-version=latest' ]] || {
+    if [[ "$key" == dx02v2 ]]; then
+      if ! grep -qFx 'pod-security.kubernetes.io/enforce=restricted' <<<"$got" ||
+        ! grep -qFx 'pod-security.kubernetes.io/enforce-version=latest' <<<"$got" ||
+        ! grep -qFx 'istio.io/dataplane-mode=ambient' <<<"$got" ||
+        ! grep -qFx 'policy.lab/enforce=true' <<<"$got"; then
+        printf 'namespace %s must carry Pod Security restricted, Istio ambient and Gatekeeper enforcement labels; got:\n%s\n' "$key" "$got"
+        rc=1
+      fi
+    elif [[ "$got" != $'pod-security.kubernetes.io/enforce=restricted\npod-security.kubernetes.io/enforce-version=latest' ]]; then
       printf 'namespace %s must carry exactly the Pod Security labels enforce=restricted, enforce-version=latest; got:\n%s\n' "$key" "$got"
       rc=1
-    }
+    fi
   done
   got="$(kubectl_local "$rendered" '{{if eq .kind "Role"}}{{range .rules}}{{$r := .}}{{range $r.apiGroups}}{{$g := .}}{{range $r.resources}}{{$g}}|{{.}}|{{range $r.verbs}}{{.}} {{end}}{{"\n"}}{{end}}{{end}}{{if or $r.resourceNames $r.nonResourceURLs}}restricted-rule{{"\n"}}{{end}}{{end}}{{end}}' |
     awk -F'|' 'NF == 3 { n = split($3, v, " "); s = ""; for (i = 1; i <= n; i++) for (j = i + 1; j <= n; j++) if (v[j] < v[i]) { t = v[i]; v[i] = v[j]; v[j] = t }
@@ -1040,6 +1075,38 @@ check_contract_platform() {
       rc=1
     fi
   done
+  render_platform_full >"$full_rendered"
+  for key in 'RespectIgnoreDifferences=true' '/spec/source/path' \
+    '/spec/source/kustomize/images' '/spec/source/kustomize/patches'; do
+    grep -qF "$key" "$full_rendered" || {
+      echo "full platform parent Application must preserve the deployer's dynamic child source field '$key'"
+      rc=1
+    }
+  done
+  for key in \
+    'argoproj.io/v1alpha1 AppProject/platform ns=argocd' \
+    'argoproj.io/v1alpha1 Application/platform ns=argocd' \
+    'rbac.authorization.k8s.io/v1 Role/dx02v2-gitops-sync ns=argocd' \
+    'rbac.authorization.k8s.io/v1 RoleBinding/dx02v2-gitops-sync ns=argocd' \
+    'telemetry.istio.io/v1 Telemetry/mesh-default ns=istio-system'; do
+    grep -qF "$key" <(kubectl_local "$full_rendered" '{{.apiVersion}} {{.kind}}/{{.metadata.name}}{{if .metadata.namespace}} ns={{.metadata.namespace}}{{end}}{{"\n"}}') || {
+      echo "full platform renderer is missing $key"
+      rc=1
+    }
+  done
+  got="$(kubectl_local "$full_rendered" '{{if eq .metadata.name "dx02v2-gitops-sync"}}{{range .rules}}{{printf "%v|%v|%v|%v\n" .apiGroups .resources .resourceNames .verbs}}{{end}}{{end}}')"
+  want='[argoproj.io]|[applications]|[dx02v2]|[get watch patch]'
+  [[ "$got" == "$want" ]] || {
+    printf 'GitOps deploy role must only get/watch/patch the dx02v2 Application; expected:\n%s\ngot:\n%s\n' "$want" "$got"
+    rc=1
+  }
+  if ! grep -qF 'https://github.com/maringelix/tx02v2.git' "$full_rendered" ||
+    ! grep -qF 'https://github.com/maringelix/dx02v2.git' "$full_rendered" ||
+    ! grep -qF 'dxRevision: gitops/azure' "$full_rendered" ||
+    grep -qE '__[A-Z][A-Z0-9_]*__' "$full_rendered"; then
+    echo "full GitOps manifests must target the two forks, dx02v2's deploy revision and contain no placeholders"
+    rc=1
+  fi
   # Helm values (rendered by helm-template) and pins.
   grep -qE '^  namespace: azure-alb-system$' platform/values/alb-controller.yaml || {
     echo "ALB Controller: albController.namespace must be azure-alb-system (federated credential subject of tx02v2-lab-alb)"
@@ -1238,6 +1305,213 @@ check_helm_template() {
   return "$rc"
 }
 
+# Render every pinned chart in the cloud profile from its real archive, with Azure install-time
+# placeholders. This catches values that do not match the chart schema and enforces digest-pinned
+# images and ClusterIP services before the expensive CI stages run.
+check_helm_template_full() {
+  local rc=0 entry repo_key version_key sha_key chart release ns value_list tgz f content values_file rendered images bad svc count=0 sizing sizing_cpu sizing_memory docs_cpu docs_memory
+  local test_storage_uri="https://tx02v2labb602d594velero.blob.core.windows.net"
+  local -a files=() args=() entries=()
+  need helm
+  load_local_versions
+  export HELM_CACHE_HOME="$HARNESS_WORK_DIR/helm/cache" HELM_CONFIG_HOME="$HARNESS_WORK_DIR/helm/config" HELM_DATA_HOME="$HARNESS_WORK_DIR/helm/data"
+  local out="$HARNESS_WORK_DIR/full-charts"
+  rm -rf "$out"
+  mkdir -p "$out/values"
+  mapfile -t entries < <(chart_table)
+  for entry in "${entries[@]}"; do
+    read -r repo_key version_key sha_key chart release ns value_list <<<"$entry"
+    [[ -n "${LV[$repo_key]:-}" && -n "${LV[$version_key]:-}" && -n "${LV[$sha_key]:-}" ]] || {
+      echo "platform/full/charts.txt: missing pin variable for $chart ($repo_key/$version_key/$sha_key)"
+      rc=1
+      continue
+    }
+    IFS=, read -ra files <<<"$value_list"
+    args=()
+    for f in "${files[@]}"; do
+      [[ -f "platform/$f" ]] || {
+        echo "platform/full/charts.txt: missing values file platform/$f"
+        rc=1
+        continue 2
+      }
+      content="$(<"platform/$f")"
+      content="${content//__VELERO_CLIENT_ID__/00000000-0000-0000-0000-000000000000}"
+      content="${content//__VELERO_STORAGE_ACCOUNT_URI__/$test_storage_uri}"
+      content="${content//__S3_BUCKET__/tx02v2-lab-velero}"
+      content="${content//__S3_ENDPOINT__/$test_storage_uri}"
+      content="${content//__AZURE_SUBSCRIPTION_ID__/00000000-0000-0000-0000-000000000000}"
+      content="${content//__AKS_NODE_RESOURCE_GROUP__/MC_tx02v2-lab_tx02v2-lab_eastus2}"
+      values_file="$out/values/$chart-$((${#args[@]} / 2)).yaml"
+      printf '%s\n' "$content" >"$values_file"
+      args+=(--values "$values_file")
+    done
+    tgz="$(pull_chart "$out/archives" "${LV[$repo_key]}" "$chart" "${LV[$version_key]}" "${LV[$sha_key]}")"
+    rendered="$out/$chart.yaml"
+    helm template "$release" "$tgz" --namespace "$ns" --kube-version "$K8S_SCHEMA_KUBERNETES_VERSION" \
+      "${args[@]}" >"$rendered" || {
+      echo "$chart ${LV[$version_key]}: helm template failed"
+      rc=1
+      continue
+    }
+    images="$(awk '
+      function indent(line, spaces) {
+        spaces = line
+        sub(/[^ ].*$/, "", spaces)
+        return length(spaces)
+      }
+      {
+        if (in_block) {
+          if ($0 ~ /^[[:space:]]*$/ || indent($0) > block_indent) next
+          in_block = 0
+        }
+        if ($0 ~ /:[[:space:]]*[|>][-+0-9]*[[:space:]]*$/) {
+          block_indent = indent($0)
+          in_block = 1
+          next
+        }
+        if ($0 ~ /^[[:space:]-]*image:[[:space:]]*/) {
+          value = $0
+          sub(/^[[:space:]-]*image:[[:space:]]*/, "", value)
+          sub(/^["\047]/, "", value)
+          sub(/["\047].*$/, "", value)
+          print value
+        }
+      }
+    ' "$rendered" | sort -u)" || images=""
+    bad=""
+    [[ -z "$images" ]] || bad="$(grep -vE '@sha256:[0-9a-f]{64}$' <<<"$images")" || bad=""
+    if [[ -n "$bad" ]]; then
+      printf '%s: images not pinned by digest:\n%s\n' "$chart" "$bad"
+      rc=1
+    fi
+    svc="$(awk '/^kind: Service$/ { s = 1 } s && /^  type: (LoadBalancer|NodePort)/ { print; s = 0 } /^---/ { s = 0 }' "$rendered")"
+    if [[ -n "$svc" ]]; then
+      printf '%s: Services must stay ClusterIP:\n%s\n' "$chart" "$svc"
+      rc=1
+    fi
+    if grep -qE '__[A-Z][A-Z0-9_]*__' "$rendered"; then
+      echo "$chart: unresolved placeholder in the rendered chart"
+      rc=1
+    fi
+    count=$((count + 1))
+    echo "$chart ${LV[$version_key]}: $(grep -c '^kind:' "$rendered" || :) objects"
+  done
+  [[ "$count" == 15 ]] || {
+    echo "platform/full/charts.txt rendered $count charts; expected 15"
+    rc=1
+  }
+  sizing="$(scripts/platform-sizing.sh 2 "$out")"
+  sizing_cpu="$(sed -n 's/^cpu_millicores=//p' <<<"$sizing")"
+  sizing_memory="$(sed -n 's/^memory_mib=//p' <<<"$sizing")"
+  docs_cpu="$(sed -nE 's#^[|][[:space:]]*full[[:space:]]*[|][[:space:]]*([0-9]+) mCPU / [0-9]+ MiB[[:space:]]*[|].*#\1#p' docs/CUSTOS.md)"
+  docs_memory="$(sed -nE 's#^[|][[:space:]]*full[[:space:]]*[|][[:space:]]*[0-9]+ mCPU / ([0-9]+) MiB[[:space:]]*[|].*#\1#p' docs/CUSTOS.md)"
+  if [[ -z "$docs_cpu" || -z "$docs_memory" ]]; then
+    echo "docs/CUSTOS.md: missing the full-profile requests row"
+    rc=1
+  elif [[ "$sizing_cpu" != "$docs_cpu" || "$sizing_memory" != "$docs_memory" ]]; then
+    printf 'R4.7 sizing differs: rendered %s mCPU / %s MiB; docs/CUSTOS.md says %s mCPU / %s MiB\n' \
+      "$sizing_cpu" "$sizing_memory" "$docs_cpu" "$docs_memory"
+    rc=1
+  fi
+  helm template platform platform/gitops --namespace argocd \
+    --set-string dxRepoURL=https://github.com/maringelix/dx02v2.git \
+    --set-string dxRevision=gitops/azure --set-string dxPath=deploy/k8s/overlays/azure \
+    --set-string appNamespace=dx02v2 >"$out/platform-gitops.yaml" || {
+    echo "platform/gitops: helm template failed"
+    rc=1
+  }
+  if grep -qE '__[A-Z][A-Z0-9_]*__' "$out/platform-gitops.yaml"; then
+    echo "platform/gitops: unresolved placeholder in the rendered chart"
+    rc=1
+  fi
+  for key in 'kind: Gateway' 'kind: HTTPRoute' 'kind: HealthCheckPolicy' 'kind: WebApplicationFirewallPolicy'; do
+    grep -qF "$key" "$out/platform-gitops.yaml" || {
+      echo "platform/gitops AppProject must allow the app's Azure resource '$key'"
+      rc=1
+    }
+  done
+  return "$rc"
+}
+
+# Keep the estimator itself covered with a tiny synthetic render; the chart check also feeds it every
+# real cloud-profile chart render above.
+check_platform_sizing() {
+  local out="$HARNESS_WORK_DIR/sizing-fixture"
+  mkdir -p "$out"
+  cat >"$out/workloads.yaml" <<'EOF'
+apiVersion: apps/v1
+kind: Deployment
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+        - name: api
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+---
+apiVersion: apps/v1
+kind: DaemonSet
+spec:
+  template:
+    spec:
+      containers:
+        - name: agent
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+spec:
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+EOF
+  local got want
+  got="$(scripts/platform-sizing.sh 2 "$out")"
+  want=$'cpu_millicores=550\nmemory_mib=1152\nnodes=2'
+  [[ "$got" == "$want" ]] || {
+    printf 'platform-sizing: expected:\n%s\ngot:\n%s\n' "$want" "$got"
+    return 1
+  }
+}
+
+check_fork_references() {
+  local rc=0 entry repo_key version_key sha_key chart release ns value_list f
+  local -a entries=() files=()
+  mapfile -t entries < <(chart_table)
+  [[ "${#entries[@]}" == 15 ]] || {
+    echo "platform/full/charts.txt must list exactly 15 pinned charts"
+    rc=1
+  }
+  for entry in "${entries[@]}"; do
+    read -r repo_key version_key sha_key chart release ns value_list <<<"$entry"
+    IFS=, read -ra files <<<"$value_list"
+    for f in "${files[@]}"; do
+      [[ -f "platform/$f" ]] || { echo "chart $chart references missing values platform/$f"; rc=1; }
+    done
+  done
+  if grep -RniE 'tx01v2|dx01v2|maringelix/(tx|dx)02v2' \
+    platform/full platform/gitops platform/manifests/full platform/values/full; then
+    echo "the cloud profile must use tx02v2/dx02v2 templates and contain no account-specific fork URL"
+    rc=1
+  fi
+  grep -qE '^dxRepoURL: https://github.com/example-owner/dx02v2\.git$' platform/gitops/values.yaml || {
+    echo "platform/gitops values must retain the fork-owner placeholder"
+    rc=1
+  }
+  grep -qE '^dxRevision: gitops/azure$' platform/gitops/values.yaml || {
+    echo "platform/gitops values must use dx02v2's Azure deployment branch"
+    rc=1
+  }
+  return "$rc"
+}
+
 check_gitleaks() {
   need gitleaks git
   if git rev-parse --verify -q HEAD >/dev/null; then
@@ -1429,6 +1703,7 @@ check_kubeconform_local() {
 check_policy_gator() {
   need gator
   gator verify -v platform/local/policies/tests/
+  gator verify -v platform/full/policies/tests/
 }
 
 check_local_lab_e2e() {
@@ -1467,6 +1742,9 @@ register_checks() {
   register static shellcheck check_shellcheck
   register static kubeconform check_kubeconform
   register static helm-template check_helm_template
+  register static helm-template-full check_helm_template_full
+  register static platform-sizing check_platform_sizing
+  register static fork-references check_fork_references
   register static local-versions check_local_versions
   register static helm-template-local check_helm_template_local
   register static kubeconform-local check_kubeconform_local

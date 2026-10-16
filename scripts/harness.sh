@@ -1076,6 +1076,13 @@ check_contract_platform() {
     fi
   done
   render_platform_full >"$full_rendered"
+  for key in 'RespectIgnoreDifferences=true' '/spec/source/path' \
+    '/spec/source/kustomize/images' '/spec/source/kustomize/patches'; do
+    grep -qF "$key" "$full_rendered" || {
+      echo "full platform parent Application must preserve the deployer's dynamic child source field '$key'"
+      rc=1
+    }
+  done
   for key in \
     'argoproj.io/v1alpha1 AppProject/platform ns=argocd' \
     'argoproj.io/v1alpha1 Application/platform ns=argocd' \
@@ -1417,6 +1424,12 @@ check_helm_template_full() {
     echo "platform/gitops: unresolved placeholder in the rendered chart"
     rc=1
   fi
+  for key in 'kind: Gateway' 'kind: HTTPRoute' 'kind: HealthCheckPolicy' 'kind: WebApplicationFirewallPolicy'; do
+    grep -qF "$key" "$out/platform-gitops.yaml" || {
+      echo "platform/gitops AppProject must allow the app's Azure resource '$key'"
+      rc=1
+    }
+  done
   return "$rc"
 }
 

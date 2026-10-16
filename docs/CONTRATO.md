@@ -167,6 +167,12 @@ A Application `dx02v2` acompanha o repositório público do app, branch `gitops/
 A identidade de deploy pode fazer `get`, `watch` e `patch` apenas na Application `dx02v2`; não lista nem
 altera outras Applications.
 
+O workflow atualiza na Application viva o overlay, as imagens e os IDs/CIDRs da implantação. A
+Application `platform` ignora apenas `spec.source.path`, `spec.source.kustomize.images` e
+`spec.source.kustomize.patches` da Application `dx02v2`, para o self-heal do pai preservar esses
+valores. A branch pública `gitops/azure` recebe a revisão e parâmetros de exemplo; IDs e CIDRs reais
+permanecem no cluster.
+
 Velero usa o plugin Azure e Entra Workload ID para gravar recursos Kubernetes no container Blob
 privado do lab. Não cria snapshots de disco nem substitui o backup gerenciado do PostgreSQL. A role
 `Storage Blob Data Contributor` fica apenas no escopo do container; os blobs expiram após 35 dias.

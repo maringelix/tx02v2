@@ -198,9 +198,10 @@ No perfil `full`, o instalador acrescenta Istio ambient, cert-manager, observabi
 Argo CD com GitOps, Gatekeeper, Trivy Operator, Velero Azure Blob e Chaos Mesh (15 charts fixados no
 total). O app-of-apps lê `platform/gitops` do tx02v2 na branch `main`; o Argo CD acompanha o repositório
 público do dx02v2 na branch `gitops/azure` e sincroniza `deploy/k8s/overlays/azure`. O workflow
-`deploy-azure` do dx02v2 publica essa branch. Argo CD fica ClusterIP; use `kubectl port-forward` para
-acessar a UI. `platform/uninstall.sh` remove primeiro as Applications para impedir que o Argo CD
-recrie rotas durante o teardown.
+`deploy-azure` do dx02v2 publica essa branch e configura o overlay, as imagens e os IDs/CIDRs na
+Application viva. A branch recebe apenas parâmetros de exemplo; IDs e CIDRs reais ficam no cluster.
+Argo CD fica ClusterIP; use `kubectl port-forward` para acessar a UI. `platform/uninstall.sh` remove
+primeiro as Applications para impedir que o Argo CD recrie rotas durante o teardown.
 
 O Velero grava recursos Kubernetes no container Blob privado com a identidade federada do ServiceAccount
 `velero/velero`; não faz snapshots nem cobre o PostgreSQL. Uma verificação de backup após uma rodada
@@ -263,9 +264,12 @@ kubectl -n dx02v2 get role,rolebinding
 ## 6. Deploy do app (dx02v2)
 
 Siga o runbook do dx02v2: com as variáveis da seção 3, o workflow `deploy-azure` lê as 15 chaves
-`tx02v2/lab/*`, publica `dx02v2/api` e `dx02v2/web` no ACR (tag = SHA do commit, nunca sobrescrita),
-cria o ConfigMap `azure-pg-ca`, aplica o overlay `azure-waf` (ou `azure`, quando `waf/policy-id` é
-`none`) no namespace `dx02v2` e roda o smoke test pelo Application Gateway for Containers.
+`tx02v2/lab/*`, publica `dx02v2/api` e `dx02v2/web` no ACR (tag = SHA do commit, nunca sobrescrita)
+e cria o ConfigMap `azure-pg-ca`. Com o perfil `full`, `mode=gitops` (padrão) configura na Application
+viva o overlay `azure-waf` (ou `azure`, quando `waf/policy-id` é `none`), as imagens e os parâmetros
+reais; a branch pública recebe apenas exemplos. O workflow espera o Argo CD sincronizar, os
+ExternalSecrets e os rollouts, depois roda o smoke test pelo Application Gateway for Containers.
+Com o perfil `core` ou sem Argo CD, escolha `mode=push` para aplicar diretamente o overlay.
 
 Para fazer o deploy de um laptop, coloque o seu object ID em `LAB_APP_DEPLOYER_PRINCIPAL_IDS`, rode o
 apply (papéis Azure de `dx02v2-gha-deploy` para você) e o `platform` de novo (RoleBinding).

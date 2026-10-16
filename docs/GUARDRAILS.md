@@ -89,12 +89,14 @@ Uma exceção é um ignore de scanner. Para adicionar uma:
 3. Explique a exceção no PR. O check `trivyignore-policy` rejeita entradas sem justificativa, sem
    validade, vencidas ou longas demais; o trivy deixa de aplicar uma entrada vencida.
 
-Exceções atuais (verificado em 2026-10-11, válidas até 2027-04-30): `AZU-0012` (endpoint público da
-conta do state) e `AZU-0013` (endpoint público do Key Vault), ambos exigidos por runners hospedados
-sem IP fixo (`docs/ARQUITETURA.md`, ADR 20). Achados MEDIUM/LOW conhecidos e aceitos, que não falham
-o scan: purge protection desligada (`AZU-0016`, de propósito), segredos sem data de expiração
-(`AZU-0017`), parâmetros de log de servidor PostgreSQL (`AZU-0019`, `AZU-0021`, `AZU-0024`), logs do
-AKS no Azure Monitor (`AZU-0040`, opcionais), logging e replicação geográfica da conta do state
+Exceções atuais (verificado em 2026-10-16): `AZU-0010` (sem bypass AzureServices na conta Velero,
+porque nenhum serviço Azure precisa acessá-la; válida até 2027-04-16), `AZU-0012` (endpoint público da
+conta do state) e `AZU-0013` (endpoint público do Key Vault), estes dois exigidos por runners
+hospedados sem IP fixo (`docs/ARQUITETURA.md`, ADR 20; válidos até 2027-04-30). Achados MEDIUM/LOW
+conhecidos e aceitos, que não falham o scan: purge protection desligada (`AZU-0016`, de propósito),
+segredos sem data de expiração (`AZU-0017`), parâmetros de log de servidor PostgreSQL
+(`AZU-0019`, `AZU-0021`, `AZU-0024`), logs do AKS no Azure Monitor (`AZU-0040`, opcionais), logging
+e replicação geográfica da conta do state
 (`AZU-0057`, `AZU-0058`), chaves gerenciadas pelo cliente (`AZU-0060`, `AZU-0067`; ADR 21), cluster
 privado (`AZU-0065`; ADR 19) e add-on Azure Policy (`AZU-0066`; IAC-09).
 

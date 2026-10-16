@@ -136,7 +136,7 @@ flowchart LR
 | 39 | Perfil cloud `core` e `full` | full instala 15 charts com pacotes e imagens pinados; requests renderizados: 795 mCPU e 3104 MiB em dois nós; sizing comparado com `docs/CUSTOS.md` | core continua o padrão de menor custo; os checks não aplicam recursos Azure |
 | 40 | Observabilidade do perfil `full` continua dentro do cluster | mantém as mesmas versões, imagens e sondas do lab local; o custo e os limites da alternativa gerenciada estão em `docs/CUSTOS.md` | Azure Monitor Managed Prometheus + Azure Managed Grafana + Log Analytics |
 | 41 | Istio ambient usa os charts upstream sobre Azure CNI Overlay com dataplane Cilium | o Istio CNI upstream declara compatibilidade com plugins CNI conformes; o AKS mantém o Azure CNI como plugin de rede | malha sidecar ou add-on gerenciado; o suporte ao conjunto upstream não foi validado pela Microsoft nem em nuvem |
-| 42 | Blob do Velero usa firewall com negação padrão e libera apenas a subnet dos nós AKS | service endpoint `Microsoft.Storage`; os pods Overlay saem com SNAT do IP do nó; autenticação Entra ID continua obrigatória | endpoint público sem regra de rede; não foi validado em nuvem |
+| 42 | Blob do Velero usa firewall com negação padrão e libera apenas a subnet dos nós AKS | service endpoint `Microsoft.Storage`; os pods Overlay saem com SNAT do IP do nó; autenticação Entra ID continua obrigatória; AZU-0010 tem exceção temporária porque nenhum serviço Azure precisa acessar a conta | endpoint público sem regra de rede; bypass genérico de AzureServices |
 
 ### R4.2 — Decisão de observabilidade (verificada em 2026-10-16)
 
@@ -175,7 +175,11 @@ O endpoint do Storage Account continua público porque o lab não cria Private E
 tem `default_action = Deny` e permite somente a subnet dos nós do AKS, que habilita o service endpoint
 `Microsoft.Storage`; os pods do Azure CNI Overlay usam SNAT do nó para destinos fora do CIDR de pods.
 O container continua privado, a role de dados fica no container, e cada chamada ainda precisa de um
-token Entra ID válido. Fontes: [regras de rede do Azure Storage](https://learn.microsoft.com/en-us/azure/storage/common/storage-network-security), [service endpoint para Storage](https://learn.microsoft.com/en-us/azure/storage/common/storage-network-security-virtual-networks) e [SNAT do Azure CNI Overlay](https://learn.microsoft.com/en-us/azure/aks/concepts-network-azure-cni-overlay). Esta configuração foi validada por Terraform e testes mockados, sem acesso ou aplicação em nuvem.
+token Entra ID válido. O Trivy AZU-0010 recomenda permitir o bypass geral `AzureServices`; nenhum
+serviço Azure consome esta conta, então o bypass fica desligado e a exceção temporária, com validade
+até 2027-04-16, está em `.trivyignore.yaml`. A documentação da Microsoft explica que o bypass é uma
+exceção de rede para serviços Azure fora da fronteira que precisem acessar a conta, usando
+autenticação forte. Fontes: [regras de rede do Azure Storage](https://learn.microsoft.com/en-us/azure/storage/common/storage-network-security), [trusted Azure services](https://learn.microsoft.com/en-us/azure/storage/common/storage-network-security-trusted-azure-services), [service endpoint para Storage](https://learn.microsoft.com/en-us/azure/storage/common/storage-network-security-virtual-networks) e [SNAT do Azure CNI Overlay](https://learn.microsoft.com/en-us/azure/aks/concepts-network-azure-cni-overlay). Esta configuração foi validada por Terraform e testes mockados, sem acesso ou aplicação em nuvem.
 
 ### Desvio documentado: papéis do ALB Controller
 

@@ -240,7 +240,9 @@ que o Argo CD recrie rotas durante o teardown, depois remove as policies Kyverno
 monitoramento (discos `managed-csi` incluídos).
 
 O Velero grava recursos Kubernetes no container Blob privado com a identidade federada do ServiceAccount
-`velero/velero`; não faz snapshots nem cobre o PostgreSQL. Uma verificação de backup após uma rodada
+`velero/velero`; o R9 também protege bytes de volumes por FSB/Kopia, sem snapshots.
+PostgreSQL permanece protegido por backup nativo. A chave escrow do repositório deve
+ser a mesma no standby; lifecycle não apaga chunks por idade (CONTINUIDADE.md). Uma verificação de backup após uma rodada
 aprovada pode usar `velero backup create dx02v2-smoke --include-namespaces dx02v2 --wait` e
 `velero backup describe dx02v2-smoke --details`. Não remova o namespace do app para testar restore em
 produção. Backup e restore ainda não foram executados em Azure.

@@ -37,6 +37,26 @@ variables {
   tags                      = { Project = "tx02v2", Environment = "lab", ManagedBy = "terraform", Repository = "maringelix/tx02v2" }
 }
 
+run "spot_is_bounded_and_system_stays_regular" {
+  command = plan
+  module { source = "../../modules/aks" }
+  variables { enable_spot_pool = true }
+  assert {
+    condition = (
+      azurerm_kubernetes_cluster.this.default_node_pool[0].auto_scaling_enabled &&
+      azurerm_kubernetes_cluster.this.default_node_pool[0].min_count >= 1 &&
+      azurerm_kubernetes_cluster_node_pool.spot[0].priority == "Spot" &&
+      azurerm_kubernetes_cluster_node_pool.spot[0].mode == "User" &&
+      azurerm_kubernetes_cluster_node_pool.spot[0].auto_scaling_enabled &&
+      azurerm_kubernetes_cluster_node_pool.spot[0].max_count == 2 &&
+      azurerm_kubernetes_cluster_node_pool.spot[0].min_count == 0 &&
+      azurerm_kubernetes_cluster_node_pool.spot[0].spot_max_price > 0 &&
+      contains(azurerm_kubernetes_cluster_node_pool.spot[0].node_taints, "kubernetes.azure.com/scalesetpriority=spot:NoSchedule")
+    )
+    error_message = "Spot must be a tainted bounded autoscaled user pool; regular system capacity remains."
+  }
+}
+
 run "control_plane" {
   command = plan
 

@@ -1,5 +1,10 @@
 # Lições aprendidas do lab Azure v1 (dezembro de 2025 a janeiro de 2026)
 
+> A tabela de decisões e as lições preservam o estado inicial de cada rodada. O escopo
+> atual de HA/backup/PITR/DR está em [CONTINUIDADE.md](CONTINUIDADE.md), e capacidade,
+> OpenCost/VPA/Spot e estimativa em [FINOPS.md](FINOPS.md). Decisões antigas marcadas
+> como fora de escopo não revogam as construções posteriores R7–R10.
+
 Este documento resume o que falhou no lab Azure v1 (repositórios tx02 e dx02, numa subscription Free Trial), por que falhou e como foi contornado.
 Serve de referência para operar e evoluir o tx02v2/dx02v2 sem repetir os mesmos erros.
 Identificadores, nomes únicos, hosts, IPs e segredos das notas foram substituídos por placeholders.

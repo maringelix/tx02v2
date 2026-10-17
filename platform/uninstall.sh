@@ -90,6 +90,8 @@ stop_gitops() {
 }
 
 uninstall_full_releases() {
+  helm uninstall opencost --namespace finops --ignore-not-found --wait=watcher --timeout 10m
+  helm uninstall lab-vpa --namespace finops --ignore-not-found --wait=watcher --timeout 10m
   helm uninstall chaos-mesh --namespace chaos-mesh --ignore-not-found --wait=watcher --timeout 10m
   helm uninstall velero --namespace velero --ignore-not-found --wait=watcher --timeout 10m
   helm uninstall trivy-operator --namespace trivy-system --ignore-not-found --wait=watcher --timeout 10m

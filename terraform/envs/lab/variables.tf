@@ -164,6 +164,22 @@ variable "kubernetes_version" {
   }
 }
 
+variable "enable_spot_pool" {
+  description = "Opt-in disposable, tainted Spot user pool with 0-2 nodes; on-demand system pool preserved."
+  type        = bool
+  default     = false
+}
+
+variable "spot_max_price" {
+  description = "Maximum Spot bid USD/node-hour. Review regional availability and cost before enabling."
+  type        = number
+  default     = 0.1
+  validation {
+    condition     = var.spot_max_price > 0 && var.spot_max_price <= 1
+    error_message = "Spot bid must be positive and at most USD1/node-hour."
+  }
+}
+
 variable "node_vm_size" {
   description = "VM size of the system node pool: at least 2 vCPU and 4 GiB, x86-64 (the dx02v2 images are linux/amd64), not B-series. Standard_D2als_v6 is the cheapest that qualifies in eastus2 (docs/CUSTOS.md)."
   type        = string

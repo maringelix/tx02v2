@@ -258,4 +258,4 @@ All notable changes to this project are documented here. The format follows
 
 ## R10: capacidade e FinOps
 
-Veja [FinOps e escala](docs/FINOPS.md) para a topologia kind HA, carga/HPA/PDB, OpenCost, VPA Off, Spot opt-in, pre?os regionais, or?amento/expira??o e limpeza. Constru??o para fork; nada executado na nuvem (v2).
+- OpenCost/VPA Off, carga/HPA/PDB e kind HA; orçamento/expiração e Spot opcionais. Prova pesada no CI; nada executado na nuvem (v2).

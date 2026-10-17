@@ -1,5 +1,10 @@
 # Arquitetura do tx02v2
 
+> A tabela de decisões e as lições preservam o estado inicial de cada rodada. O escopo
+> atual de HA/backup/PITR/DR está em [CONTINUIDADE.md](CONTINUIDADE.md), e capacidade,
+> OpenCost/VPA/Spot e estimativa em [FINOPS.md](FINOPS.md). Decisões antigas marcadas
+> como fora de escopo não revogam as construções posteriores R7–R10.
+
 Visão da infraestrutura Azure do lab, as decisões por trás dela (ADRs curtos), a equivalência com o
 lab AWS (`tx01v2`) e o que mudou em relação ao v1. Nada disto foi aplicado em nuvem na v2
 (`não executado em nuvem (v2)`); as decisões estão cobertas pelos testes e checks citados.
@@ -55,7 +60,7 @@ A camada Terraform continua separada da plataforma Kubernetes. `terraform/envs/l
 
 O Argo CD é privado via ClusterIP. Um app-of-apps lê `platform/gitops` deste repositório pela branch `main`; o chart registra `dx02v2` a partir da branch pública `gitops/azure` do repositório de aplicação. O deployer pode fazer `get`, `watch` e `patch` apenas na Application `dx02v2`, sem listar nem alterar outras Applications. Antes de remover rotas ou Gateways, `platform/uninstall.sh` para as Applications para que a reconciliação não recrie os recursos.
 
-Velero usa o plugin Azure, Entra Workload ID e um container Blob privado com expiração de 35 dias. A role de dados é atribuída apenas no container. A Storage Account mantém o endpoint público, sem Private Endpoint, mas seu firewall nega por padrão e permite somente a subnet dos nós do AKS, com o service endpoint `Microsoft.Storage`; o CNI Overlay faz SNAT do tráfego dos pods para o IP do nó. A autenticação dos dados continua por Entra ID e não há chave compartilhada. O backup cobre recursos Kubernetes, não snapshots de disco nem PostgreSQL. O Trivy Operator recebe acesso Reader restrito aos dois repositórios do app por Workload ID, e Kyverno recebe a mesma leitura para verificar a atestação Sigstore no admission; nenhuma senha do registry é gravada. Essa regra de rede e o RBAC são validados em código e testes mockados, não em uma rodada Azure.
+Velero usa o plugin Azure, Entra Workload ID e um container Blob privado com expiração de 35 dias. A role de dados é atribuída apenas no container. A Storage Account mantém o endpoint público, sem Private Endpoint, mas seu firewall nega por padrão e permite as subnets dos nós AKS das regiões próprias no DR, com o service endpoint `Microsoft.Storage.Global`; o CNI Overlay faz SNAT do tráfego dos pods para o IP do nó. A autenticação dos dados continua por Entra ID e não há chave compartilhada. O R9 cobre objetos e dados de volumes por FSB/Kopia; não são snapshots de disco. PostgreSQL usa backup nativo. A lifecycle expira somente o prefixo backups; chunks compartilhados seguem GC do repositório. O Trivy Operator recebe acesso Reader restrito aos dois repositórios do app por Workload ID, e Kyverno recebe a mesma leitura para verificar a atestação Sigstore no admission; nenhuma senha do registry é gravada. Essa regra de rede e o RBAC são validados em código e testes mockados, não em uma rodada Azure.
 
 Renders dos charts reais, contratos e teardown foram verificados localmente. Instalação, backup e restore em Azure continuam `não executado em nuvem (v2)`.
 

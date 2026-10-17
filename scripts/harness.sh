@@ -1251,6 +1251,17 @@ check_image_admission_policy() {
     echo "the rendered app security policy must restrict its edge exception to the contract AGC subnet"
     rc=1
   fi
+  # portLevelMtls is valid only with a workload selector: the CRD refuses it on a namespace-wide
+  # PeerAuthentication, which the JSON schema of kubeconform cannot see.
+  got="$(kubectl_local "$rendered" '{{if eq .kind "PeerAuthentication"}}{{.metadata.name}}|{{if .spec.portLevelMtls}}ports{{end}}|{{if .spec.selector}}selector{{end}}{{"\n"}}{{end}}')" || return 1
+  if grep -qE '\|ports\|$' <<<"$got"; then
+    printf 'a PeerAuthentication with portLevelMtls needs a workload selector (the CRD refuses it otherwise):\n%s\n' "$(grep -E '\|ports\|$' <<<"$got")"
+    rc=1
+  fi
+  grep -qxF 'default||' <<<"$got" || {
+    echo "the namespace-wide PeerAuthentication default (STRICT, no selector, no port exception) is missing"
+    rc=1
+  }
   return "$rc"
 }
 

@@ -126,8 +126,8 @@ remove_full_application_resources() {
   # Remove them while their CRDs still exist so a later core-profile install has no stale policies,
   # SLO rules, or dashboard from the full profile.
   if crd_exists peerauthentications.security.istio.io; then
-    kubectl delete peerauthentications.security.istio.io default --namespace dx02v2 \
-      --ignore-not-found --wait=true --timeout=5m
+    kubectl delete peerauthentications.security.istio.io default agc-edge-web agc-edge-api agc-edge-acme-solver \
+      --namespace dx02v2 --ignore-not-found --wait=true --timeout=5m
   fi
   if crd_exists authorizationpolicies.security.istio.io; then
     kubectl delete authorizationpolicies.security.istio.io api web-agc-edge api-require-waypoint \

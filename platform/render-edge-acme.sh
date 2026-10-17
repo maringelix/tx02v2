@@ -16,7 +16,7 @@ guid='[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
   die "AGC_ID does not identify the AGC of tx02v2-lab"
 [[ "$frontend" == tx02v2-lab-frontend ]] || die "AGC_FRONTEND does not identify the frontend of tx02v2-lab"
 
-content="$(<"$HERE/manifests/full/edge-acme.yaml")"
+content="$(<"$HERE/templates/edge-acme.yaml")"
 content="${content//__DNS_HOSTNAME__/$hostname}"
 content="${content//__ACME_EMAIL__/$email}"
 content="${content//__AGC_ID__/$agc_id}"

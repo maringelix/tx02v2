@@ -115,7 +115,7 @@ REQUIRED_FILES=(
   platform/manifests/full/rbac-argocd-deployer.yaml platform/manifests/full/tracing.yaml
   platform/manifests/full/waypoint.yaml platform/manifests/full/app-security.yaml
   platform/manifests/full/app-monitoring.yaml platform/manifests/full/image-verification.yaml
-  platform/manifests/full/edge-acme.yaml platform/render-edge-acme.sh
+  platform/templates/edge-acme.yaml platform/render-edge-acme.sh
   platform/gitops/Chart.yaml platform/gitops/values.yaml
   platform/gitops/templates/application.yaml platform/gitops/templates/appproject.yaml
   platform/full/policies/constraints/allowed-repos.yaml platform/full/policies/tests/pod-acr.yaml

@@ -28,5 +28,5 @@ ensure_velero_repository_credentials
 [[ "$(cat "$work/key")" == "$VELERO_REPOSITORY_PASSWORD" ]]
 ensure_velero_repository_credentials
 if (VELERO_REPOSITORY_PASSWORD="$(printf '%064d' 2)"; ensure_velero_repository_credentials) >/dev/null 2>&1; then die 'repository key changed'; fi
-[[ "$(cat "$work/key")" == "$VELERO_REPOSITORY_PASSWORD" ]]
 echo 'PASS mandatory initial key, idempotent reuse and refusal of an incompatible repository key'
+[[ "$(cat "$work/key")" == "$(printf '%064d' 1)" ]]

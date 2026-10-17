@@ -46,7 +46,7 @@ imagens por digest em `platform/local/values/`):
 
 | Camada | Componentes | Perfil |
 |---|---|---|
-| core | Gateway API 1.6.3 (standard), Istio 1.31.1 ambient (istiod, istio-cni, ztunnel, GatewayClass `istio`), cert-manager 1.21.2 + ClusterIssuer `lab-ca`, External Secrets 2.12.0 + ClusterSecretStore `local-secrets`, metrics-server 0.9.0, contrato `lab-system/lab-contract` | todos |
+| core | Gateway API 1.6.3 (experimental, para o retry do exercício R8 no waypoint), Istio 1.31.1 ambient (istiod, istio-cni, ztunnel, GatewayClass `istio`), cert-manager 1.21.2 + ClusterIssuer `lab-ca`, External Secrets 2.12.0 + ClusterSecretStore `local-secrets`, metrics-server 0.9.0, contrato `lab-system/lab-contract` | todos |
 | observability | kube-prometheus-stack 92.3.0 (Prometheus 3.15 com exemplars, Alertmanager 0.34 → `alert-sink` e Slack, Grafana 13.2 só ClusterIP, kube-state-metrics, node-exporter), Loki 3.6 (single binary), Alloy 1.20, Tempo 3.1 (single binary), OpenTelemetry Collector 0.162 (OTLP → Tempo + spanmetrics), `Telemetry` do Istio (spans dos Gateways) | `observability`, `full` |
 | operations | Argo CD 3.5.5, Gatekeeper 3.23.1 + políticas, Trivy Operator 0.35, Velero 1.18 (plugin AWS/S3 → emulador; só no lab local), Chaos Mesh 2.8.4 | `operations`, `full` |
 

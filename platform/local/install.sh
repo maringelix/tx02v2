@@ -2,7 +2,7 @@
 # Installs the platform of the local lab on the kind cluster of terraform/envs/local (called by
 # scripts/local-lab.sh up; re-running it upgrades in place). Components, in order:
 #   1. cluster preparation: namespaces, registry hosting ConfigMap, load balancer label of the node
-#   2. Gateway API CRDs (standard channel, pinned asset)
+#   2. Gateway API CRDs (experimental channel for the HTTPRoute retry exercise, pinned asset)
 #   3. Istio ambient (base, istiod, istio-cni, ztunnel; GatewayClass istio)
 #   4. cert-manager + ClusterIssuer lab-ca (lab CA of terraform/envs/local)
 #   5. External Secrets Operator + ClusterSecretStore local-secrets (Secrets of lab-secrets)
@@ -65,11 +65,11 @@ EOF
 }
 
 install_gateway_api() {
-  local asset="$WORK_DIR/gateway-api-$GATEWAY_CRDS_VERSION.yaml" got
-  download "https://github.com/kubernetes-sigs/gateway-api/releases/download/$GATEWAY_CRDS_VERSION/standard-install.yaml" "$asset"
+  local asset="$WORK_DIR/gateway-api-$GATEWAY_CRDS_VERSION-experimental.yaml" got
+  download "https://github.com/kubernetes-sigs/gateway-api/releases/download/$GATEWAY_CRDS_VERSION/experimental-install.yaml" "$asset"
   got="$(sha256_of "$asset")"
-  [[ "$got" == "$GATEWAY_CRDS_SHA256" ]] || die "refusing Gateway API $GATEWAY_CRDS_VERSION: SHA256 $got differs from platform/local/versions.env"
-  log "Gateway API CRDs $GATEWAY_CRDS_VERSION (standard channel)"
+  [[ "$got" == "$GATEWAY_CRDS_EXPERIMENTAL_SHA256" ]] || die "refusing Gateway API $GATEWAY_CRDS_VERSION experimental channel: SHA256 $got differs from platform/local/versions.env"
+  log "Gateway API CRDs $GATEWAY_CRDS_VERSION (experimental channel; HTTPRoute retries are an experimental API)"
   kubectl apply --server-side --force-conflicts -f "$asset" >/dev/null
   kubectl wait --for=condition=Established --timeout=120s \
     crd/gatewayclasses.gateway.networking.k8s.io crd/gateways.gateway.networking.k8s.io crd/httproutes.gateway.networking.k8s.io >/dev/null

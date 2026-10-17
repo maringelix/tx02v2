@@ -100,3 +100,12 @@ variable "budget_alert_emails" {
     error_message = "Replace the placeholder you@example.com of terraform.tfvars.example with an address you read: the budget alerts are the only warning of a forgotten lab."
   }
 }
+variable "state_replication_type" {
+  description = "LRS for the cheap default; RAGRS preserves versioned state in the paired region with read access."
+  type        = string
+  default     = "LRS"
+  validation {
+    condition     = contains(["LRS", "RAGRS"], var.state_replication_type)
+    error_message = "Use LRS or RAGRS (read-access geo-redundant)."
+  }
+}

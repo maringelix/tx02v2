@@ -1916,6 +1916,9 @@ register_checks() {
   register static policy-tags check_policy_tags
   register static policy-identifiers check_policy_identifiers
   register static volume-restore-wiring 'bash scripts/tests/volume-restore-wiring.sh'
+  register static backup-credentials 'bash scripts/tests/backup-credentials.sh'
+  register static dr-current-secrets 'bash scripts/tests/dr-secrets.sh'
+  register static region-target 'bash scripts/tests/region-target.sh'
   register static policy-workflows check_policy_workflows
   register static policy-scripts check_policy_scripts
   register static destroy-flow check_destroy_flow

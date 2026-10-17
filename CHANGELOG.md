@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- R9: build selectable regional platform/GitOps, current-credential synchronization, regional
+  tracing, native lag alerts, RAGRS recovery reads and state option, plus portable PVC data backup.
+
 ### Added
 
 - R9 Velero PVC recovery exercise: remove the original claim, PV and bytes, restore through

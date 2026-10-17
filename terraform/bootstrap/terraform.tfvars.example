@@ -21,3 +21,5 @@ dx02v2_repository_id = "3000000"
 # Required: who receives the cost alerts (Actual 50/80/100 %, Forecasted 100 %). Use an address you read.
 budget_alert_emails   = ["you@example.com"]
 monthly_budget_amount = 25
+# For the DR curriculum, choose read-access geo redundancy before the first bootstrap.
+# state_replication_type = "RAGRS"

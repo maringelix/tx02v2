@@ -8,7 +8,7 @@ resource "azurerm_storage_account" "this" {
   resource_group_name             = var.resource_group_name
   location                        = var.location
   account_tier                    = "Standard"
-  account_replication_type        = "LRS"
+  account_replication_type        = var.replication_type
   account_kind                    = "StorageV2"
   https_traffic_only_enabled      = true
   min_tls_version                 = "TLS1_2"
@@ -20,7 +20,7 @@ resource "azurerm_storage_account" "this" {
   network_rules {
     default_action             = "Deny"
     bypass                     = []
-    virtual_network_subnet_ids = [var.aks_nodes_subnet_id]
+    virtual_network_subnet_ids = concat([var.aks_nodes_subnet_id], var.recovery_subnet_ids)
   }
 
   tags = var.tags
@@ -40,7 +40,8 @@ resource "azurerm_storage_management_policy" "this" {
     name    = "expire-velero-backups-after-35-days"
     enabled = true
     filters {
-      prefix_match = ["${var.container_name}/"]
+      # Kopia chunks have their own reference-counted GC; never age-delete live repository chunks.
+      prefix_match = ["${var.container_name}/backups/"]
       blob_types   = ["blockBlob"]
     }
     actions {

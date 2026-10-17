@@ -65,9 +65,20 @@ run "dr_uses_a_second_region_and_private_replica" {
     condition = (
       endswith(module.acr_dr[0].name, "dr") &&
       endswith(module.keyvault_dr[0].name, "-dr") &&
+      module.keyvault_dr[0].manages_values == false &&
       endswith(module.appconfig_dr[0].name, "-dr") &&
       module.velero_dr[0].storage_account_name != module.velero.storage_account_name
     )
     error_message = "Registry, secrets, config and backup storage must have independent secondary names."
+  }
+  assert {
+    condition = (
+      azurerm_application_insights.traces_dr[0].location == "centralus" &&
+      azurerm_role_assignment.dr["alb_configuration"].scope == module.agc_dr[0].id &&
+      azurerm_monitor_metric_alert.replica_lag[0].criteria[0].metric_name == "physical_replication_delay_in_seconds" &&
+      basename(azurerm_role_assignment.dr["velero_recovery"].role_definition_id) == module.roles.lab_assignable["Storage Blob Data Reader"] &&
+      azurerm_role_assignment.dr["velero_recovery"].scope == module.velero.container_id
+    )
+    error_message = "DR needs regional telemetry and lag monitoring; recovery reads only the primary backup container."
   }
 }

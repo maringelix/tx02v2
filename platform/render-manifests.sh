@@ -48,6 +48,11 @@ main() {
 
   while (($# > 0)); do
     case "$1" in
+      --target)
+        [[ "${2:-}" == primary || "${2:-}" == secondary ]] || usage
+        [[ "$2" != secondary ]] || DX_REVISION=gitops/azure-dr
+        shift 2
+        ;;
       --full)
         [[ "${2:-}" =~ $OWNER_RE ]] || usage
         owner=$2
@@ -112,6 +117,7 @@ main() {
         line="${line//__TX_REPO_URL__/$tx_repo_url}"
         line="${line//__DX_REPO_URL__/$dx_repo_url}"
         line="${line//__DX_REVISION__/$DX_REVISION}"
+        if [[ "$DX_REVISION" == *-dr ]]; then line="${line//__BACKUP_SCHEDULE__/lab-daily-dr}"; else line="${line//__BACKUP_SCHEDULE__/lab-daily}"; fi
         line="${line//__ACR_LOGIN_SERVER__/$acr}"
         line="${line//__AGC_SUBNET_CIDR__/$agc_cidr}"
       fi

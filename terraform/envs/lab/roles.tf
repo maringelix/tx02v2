@@ -215,10 +215,25 @@ locals {
         scope        = module.network_dr[0].agc_subnet_id
         principal_id = azurerm_user_assigned_identity.alb.principal_id
       }
+      alb_configuration = {
+        role         = "AppGw for Containers Configuration Manager"
+        scope        = module.agc_dr[0].id
+        principal_id = azurerm_user_assigned_identity.alb.principal_id
+      }
       velero = {
         role         = "Storage Blob Data Contributor"
         scope        = module.velero_dr[0].container_id
         principal_id = module.velero_dr[0].identity_principal_id
+      }
+      velero_recovery = {
+        role         = "Storage Blob Data Reader"
+        scope        = module.velero.container_id
+        principal_id = module.velero_dr[0].identity_principal_id
+      }
+      otel = {
+        role         = "Monitoring Metrics Publisher"
+        scope        = azurerm_application_insights.traces_dr[0].id
+        principal_id = azurerm_user_assigned_identity.otel.principal_id
       }
     },
     { for pair in setproduct(keys(local.image_writer_principals), local.acr_repositories) :

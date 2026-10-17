@@ -21,6 +21,6 @@ resource "azurerm_dns_cname_record" "app" {
   zone_name           = azurerm_dns_zone.app[0].name
   resource_group_name = data.azurerm_resource_group.lab.name
   ttl                 = 60
-  record              = trimsuffix(module.agc.frontend_fqdn, ".")
+  record              = trimsuffix(var.active_region == "secondary" ? module.agc_dr[0].frontend_fqdn : module.agc.frontend_fqdn, ".")
   tags                = local.tags
 }

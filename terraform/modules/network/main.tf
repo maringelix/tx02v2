@@ -23,7 +23,7 @@ resource "azurerm_subnet" "aks_nodes" {
   address_prefixes     = [var.aks_nodes_subnet_cidr]
 
   service_endpoint {
-    service = "Microsoft.Storage"
+    service = var.storage_service_endpoint
   }
 }
 

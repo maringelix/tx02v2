@@ -150,7 +150,7 @@ esta linha para que a estimativa não se separe dos charts.
 
 | Perfil | Requests dos charts | Nós de referência | Capacidade nominal antes de reservar recursos para AKS e para o app |
 |---|---:|---|---|
-| full | 1315 mCPU / 3680 MiB | 2 × `Standard_D2as_v5` (2 vCPU, 8 GiB cada) | 4000 mCPU / 16384 MiB; os charts usam cerca de 33% da CPU e 22% da memória nominal |
+| full | 1335 mCPU / 3808 MiB | 2 × `Standard_D2as_v5` (2 vCPU, 8 GiB cada) | 4000 mCPU / 16384 MiB; os charts usam cerca de 33% da CPU e 22% da memória nominal |
 
 Os valores são requests de CPU e memória dos charts, não uso medido nem capacidade `allocatable`. Os
 charts também pedem armazenamento: Prometheus 12 GiB, Alertmanager 2 GiB, Grafana 2 GiB, Loki 10 GiB

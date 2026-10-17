@@ -52,7 +52,8 @@ module "roles" {
 }
 
 module "network" {
-  source = "../../modules/network"
+  source                   = "../../modules/network"
+  storage_service_endpoint = var.postgres_profile == "dr" ? "Microsoft.Storage.Global" : "Microsoft.Storage"
 
   name                  = local.name
   location              = var.location
@@ -170,7 +171,9 @@ module "appconfig" {
 }
 
 module "velero" {
-  source = "../../modules/velero"
+  source              = "../../modules/velero"
+  replication_type    = var.postgres_profile == "dr" ? "RAGRS" : "LRS"
+  recovery_subnet_ids = var.postgres_profile == "dr" ? [module.network_dr[0].aks_nodes_subnet_id] : []
 
   name                 = local.name
   storage_account_name = "${replace(local.name, "-", "")}${local.suffix}velero"

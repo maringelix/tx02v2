@@ -10,7 +10,7 @@ resource "azurerm_storage_account" "state" {
   location                 = var.location
   account_kind             = "StorageV2"
   account_tier             = "Standard"
-  account_replication_type = "LRS"
+  account_replication_type = var.state_replication_type
   access_tier              = "Hot"
 
   min_tls_version                   = "TLS1_2"

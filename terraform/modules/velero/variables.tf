@@ -45,3 +45,14 @@ variable "tags" {
   description = "Contract tags for resources that support Azure tags."
   type        = map(string)
 }
+variable "replication_type" {
+  description = "LRS for core, RA-GRS for region-independent recovery reads in DR."
+  type        = string
+  default     = "LRS"
+}
+
+variable "recovery_subnet_ids" {
+  description = "Additional owned recovery node subnets, never public IP ranges."
+  type        = list(string)
+  default     = []
+}

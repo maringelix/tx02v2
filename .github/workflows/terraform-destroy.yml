@@ -44,6 +44,7 @@ jobs:
       TF_INPUT: "0"
       TF_VAR_location: ${{ vars.LAB_LOCATION }}
       TF_VAR_postgres_profile: ${{ vars.LAB_POSTGRES_PROFILE || 'core' }}
+      TF_VAR_active_region: ${{ vars.LAB_ACTIVE_REGION || 'primary' }}
       TF_VAR_postgres_ha_sku: ${{ vars.LAB_POSTGRES_HA_SKU || 'GP_Standard_D2ads_v5' }}
       TF_VAR_postgres_backup_retention_days: ${{ vars.LAB_POSTGRES_BACKUP_RETENTION_DAYS || '7' }}
       TF_VAR_postgres_geo_backup: ${{ vars.LAB_POSTGRES_GEO_BACKUP || 'false' }}

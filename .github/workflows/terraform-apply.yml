@@ -33,6 +33,7 @@ jobs:
       TF_INPUT: "0"
       TF_VAR_location: ${{ vars.LAB_LOCATION }}
       TF_VAR_postgres_profile: ${{ vars.LAB_POSTGRES_PROFILE || 'core' }}
+      TF_VAR_active_region: ${{ vars.LAB_ACTIVE_REGION || 'primary' }}
       TF_VAR_postgres_ha_sku: ${{ vars.LAB_POSTGRES_HA_SKU || 'GP_Standard_D2ads_v5' }}
       TF_VAR_postgres_backup_retention_days: ${{ vars.LAB_POSTGRES_BACKUP_RETENTION_DAYS || '7' }}
       TF_VAR_postgres_geo_backup: ${{ vars.LAB_POSTGRES_GEO_BACKUP || 'false' }}
@@ -121,6 +122,12 @@ jobs:
 
       - name: terraform apply
         run: terraform -chdir=terraform/envs/lab apply -input=false -no-color tfplan
+
+      - name: Replicate current credentials to the standby vault
+        if: env.TF_VAR_postgres_profile == 'dr'
+        run: |
+          host="$(terraform -chdir=terraform/envs/lab output -raw dr_postgres_fqdn)"
+          bash scripts/sync-dr-secrets.sh --db-host "$host"
 
       - name: Outputs to the job summary (identifiers and addresses replaced)
         env:

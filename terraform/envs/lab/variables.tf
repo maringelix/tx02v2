@@ -594,3 +594,12 @@ variable "purge_key_vault_on_destroy" {
   type        = bool
   default     = false
 }
+variable "active_region" {
+  description = "Explicit DNS cutover after human fencing, promotion and pre-DNS smoke. Does not promote a database."
+  type        = string
+  default     = "primary"
+  validation {
+    condition     = contains(["primary", "secondary"], var.active_region) && (var.active_region != "secondary" || var.postgres_profile == "dr")
+    error_message = "Secondary routing requires the DR profile."
+  }
+}

@@ -100,6 +100,11 @@ output "dr_postgres_name" {
   value       = var.postgres_profile == "dr" ? azurerm_postgresql_flexible_server.replica[0].name : ""
 }
 
+output "dr_postgres_fqdn" {
+  description = "Regional PostgreSQL TLS hostname used by apply-only current credential synchronization."
+  value       = var.postgres_profile == "dr" ? azurerm_postgresql_flexible_server.replica[0].fqdn : ""
+}
+
 output "dr_location" {
   description = "Secondary Azure region or empty without DR."
   value       = var.postgres_profile == "dr" ? var.dr_location : ""

@@ -89,6 +89,68 @@ região afetada; o state padrão do bootstrap é versionado, mas LRS não é uma
 
 ## Fontes
 
+## Preparação do standby, backups e state
+
+1. Habilite o perfil DR e, no bootstrap, `state_replication_type="RAGRS"`. Inspecione
+   o plano de conversão de um backend existente; nunca aceite substituir o bucket/
+   container que contém seu state. O state mantém versões, soft delete e lock.
+2. Configure o secret do environment `LAB_VELERO_REPOSITORY_PASSWORD` com 64 caracteres
+   hexadecimais aleatórios e preserve uma cópia privada fora das regiões. O mesmo
+   segredo protege o Kopia nos dois clusters. Não o rotacione depois do primeiro
+   backup: isso impediria ler o repositório existente. A instalação recusa divergência.
+3. O apply protegido sincroniza **os valores atuais** do Key Vault primário, mudando
+   somente o FQDN do banco no destino. Reexecute após rotações. Plan não lê valores;
+   o acesso de apply já vem do Secrets Officer restrito ao resource group do lab.
+4. Instale com `platform/install.sh --profile full --github-owner OWNER --target secondary`.
+   O AKS secundário usa `gitops/azure-dr`, recursos de telemetria regionais e seu
+   próprio backup. O destino `primary-recovery` lê o endpoint Blob secundário do
+   storage RAGRS primário, com **Storage Blob Data Reader apenas naquele container**.
+   As duas subnets usam Microsoft.Storage.Global; nenhuma faixa pública foi liberada.
+5. Confira conclusão/lag da geo replicação e Last Sync Time antes de aceitar o backup.
+   RAGRS é assíncrono e não garante RPO zero. Os schedules têm nomes diferentes para
+   não colidir no catálogo. Kopia coleta chunks por referência: lifecycle por idade
+   aplica-se só a `backups/`, nunca aos chunks vivos do repositório.
+6. O cert-manager do standby cria issuer/certificate sem esperar HTTP-01 no DNS que
+   ainda aponta para o primário. Antes de promover tráfego, restaure apenas o Secret
+   TLS marcado a partir do backup importado:
+
+```yaml
+apiVersion: velero.io/v1
+kind: Restore
+metadata:
+  name: standby-tls
+  namespace: velero
+spec:
+  backupName: REPLACE_WITH_IMPORTED_BACKUP_NAME
+  includedNamespaces: [dx02v2]
+  includedResources: [secrets]
+  labelSelector:
+    matchLabels:
+      lab.continuity/tls: "true"
+```
+
+Exija Restore Completed, confirme validade/SAN e não publique o material TLS. O
+certificado precisa estar no backup antes do incidente. A renovação HTTP-01 usa o
+novo Gateway depois da troca de DNS. Faça o smoke do DX no endereço do standby;
+só após fencing, promoção e aceite dos dados use `active_region=secondary` /
+`LAB_ACTIVE_REGION` para mover o CNAME. Esse input não promove o banco.
+
+Velero protege objetos e bytes dos PVCs com FSB/data mover; o namespace velero
+permite root/hostPath para ler os mounts do kubelet, mantendo os namespaces da app
+restritos. O checksum do restore local é prova separada do backup nativo PostgreSQL.
+`LabBackupTooOldOrMissing` (30 h) e `LabRestoreFailed` chegam ao Alertmanager/Slack
+configurado. O Azure Monitor registra o alerta nativo de lag (>60 s em 5 min);
+associe um action group no exercício cloud para notificações fora do portal.
+
+Na perda regional, leia a versão escolhida do state pelo endpoint secundário para
+um diretório privado, confira lineage/serial e faça fencing de qualquer apply antigo.
+Nunca use dois backends graváveis ao mesmo tempo ou publique o state em artifacts.
+O destroy inventaria ambos os AKS antes do Terraform; revise locks e retenções antes
+de liberar a exclusão. A recuperação gerenciada, emissão ACME e egress ainda não
+foram homologados na Azure v2.
+
+## Referências operacionais
+
 - [HA e restrições de SKU/região](https://learn.microsoft.com/azure/postgresql/high-availability/concepts-high-availability)
 - [Backup, PITR e geo restore](https://learn.microsoft.com/azure/postgresql/backup-restore/concepts-backup-restore)
 - [Rede privada e replicação regional](https://learn.microsoft.com/azure/postgresql/network/concepts-networking-private)

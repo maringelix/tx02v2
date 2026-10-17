@@ -125,7 +125,7 @@ run "the_lab_assigns_exactly_the_abac_roles" {
     condition = toset(concat(
       [for r in azurerm_role_assignment.pre_cluster : basename(r.role_definition_id)],
       [for r in azurerm_role_assignment.lab : basename(r.role_definition_id)],
-    )) == toset(values(module.roles.lab_assignable))
+    )) == setsubtract(toset(values(module.roles.lab_assignable)), [module.roles.lab_assignable["Storage Blob Data Reader"]])
     error_message = "The roles assigned by the lab root must equal the ABAC list of tx02v2-gha-apply (modules/role-ids)."
   }
 
@@ -267,7 +267,7 @@ run "app_deployers_get_the_roles_of_the_deploy_identity" {
     condition = toset(concat(
       [for r in azurerm_role_assignment.pre_cluster : basename(r.role_definition_id)],
       [for r in azurerm_role_assignment.lab : basename(r.role_definition_id)],
-    )) == toset(values(module.roles.lab_assignable))
+    )) == setsubtract(toset(values(module.roles.lab_assignable)), [module.roles.lab_assignable["Storage Blob Data Reader"]])
     error_message = "With app deployers, the roles assigned by the lab root must still equal the ABAC list of tx02v2-gha-apply."
   }
 
@@ -295,7 +295,7 @@ run "no_app_deployers_assign_nothing_extra" {
     condition = toset(concat(
       [for r in azurerm_role_assignment.pre_cluster : basename(r.role_definition_id)],
       [for r in azurerm_role_assignment.lab : basename(r.role_definition_id)],
-    )) == toset(values(module.roles.lab_assignable))
+    )) == setsubtract(toset(values(module.roles.lab_assignable)), [module.roles.lab_assignable["Storage Blob Data Reader"]])
     error_message = "Without app deployers, the roles assigned by the lab root must still equal the ABAC list of tx02v2-gha-apply."
   }
 

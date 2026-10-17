@@ -193,29 +193,29 @@ run "key_vault_and_secrets" {
   }
 
   assert {
-    condition     = azurerm_key_vault_secret.db.name == "tx02v2-lab-db-app" && azurerm_key_vault_secret.admin_token.name == "tx02v2-lab-app-admin-token"
+    condition     = azurerm_key_vault_secret.db[0].name == "tx02v2-lab-db-app" && azurerm_key_vault_secret.admin_token[0].name == "tx02v2-lab-app-admin-token"
     error_message = "Secret names must follow the contract."
   }
 
   assert {
     condition = (
-      azurerm_key_vault_secret.db.value == null && azurerm_key_vault_secret.db.value_wo == null &&
-      azurerm_key_vault_secret.admin_token.value == null && azurerm_key_vault_secret.admin_token.value_wo == null
+      azurerm_key_vault_secret.db[0].value == null && azurerm_key_vault_secret.db[0].value_wo == null &&
+      azurerm_key_vault_secret.admin_token[0].value == null && azurerm_key_vault_secret.admin_token[0].value_wo == null
     )
     error_message = "Secret values must never be stored (plaintext value unset, write-only value never persisted)."
   }
 
   assert {
     condition = (
-      azurerm_key_vault_secret.db.value_wo_version == 1 && azurerm_key_vault_secret.admin_token.value_wo_version == 1 &&
-      azurerm_key_vault_secret.db.content_type == "application/json" && azurerm_key_vault_secret.admin_token.content_type == "text/plain"
+      azurerm_key_vault_secret.db[0].value_wo_version == 1 && azurerm_key_vault_secret.admin_token[0].value_wo_version == 1 &&
+      azurerm_key_vault_secret.db[0].content_type == "application/json" && azurerm_key_vault_secret.admin_token[0].content_type == "text/plain"
     )
     error_message = "Secrets are written through value_wo (version 1) with their content types."
   }
 
   assert {
     condition = alltrue([
-      for t in [azurerm_key_vault.this.tags, azurerm_key_vault_secret.db.tags, azurerm_key_vault_secret.admin_token.tags] : t == var.tags
+      for t in [azurerm_key_vault.this.tags, azurerm_key_vault_secret.db[0].tags, azurerm_key_vault_secret.admin_token[0].tags] : t == var.tags
     ])
     error_message = "The vault and its secrets carry the contract tags."
   }
@@ -241,7 +241,7 @@ run "secret_rotation" {
   }
 
   assert {
-    condition     = azurerm_key_vault_secret.db.value_wo_version == 2 && azurerm_key_vault_secret.admin_token.value_wo_version == 3
+    condition     = azurerm_key_vault_secret.db[0].value_wo_version == 2 && azurerm_key_vault_secret.admin_token[0].value_wo_version == 3
     error_message = "The versions must drive value_wo_version (rotation)."
   }
 }

@@ -29,18 +29,24 @@ initContainers:
 credentials:
   useSecret: false
   existingSecret: ""
-# Cloud CSI snapshots use the managed storage driver; local FSB hostPath does not carry into AKS.
-deployNodeAgent: false
+# Kopia moves filesystem bytes to Blob storage. Only this backup namespace permits kubelet host paths.
+deployNodeAgent: true
+nodeAgent:
+  podLabels:
+    azure.workload.identity/use: "true"
 configuration:
+  defaultVolumesToFsBackup: true
   backupStorageLocation:
     - name: default
       provider: azure
-      bucket: tx02v2-lab-velero
+      bucket: __S3_BUCKET__
       default: true
       config:
         useAAD: "true"
         storageAccountURI: __VELERO_STORAGE_ACCOUNT_URI__
   extraEnvVars:
+    - name: HOME
+      value: /scratch
     - name: AZURE_SUBSCRIPTION_ID
       value: __AZURE_SUBSCRIPTION_ID__
     - name: AZURE_RESOURCE_GROUP

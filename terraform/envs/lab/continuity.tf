@@ -10,8 +10,9 @@ resource "azurerm_management_lock" "postgres" {
 }
 
 module "network_dr" {
-  count  = var.postgres_profile == "dr" ? 1 : 0
-  source = "../../modules/network"
+  count                    = var.postgres_profile == "dr" ? 1 : 0
+  source                   = "../../modules/network"
+  storage_service_endpoint = "Microsoft.Storage.Global"
 
   name                  = "${local.name}-dr"
   location              = var.dr_location
@@ -152,6 +153,7 @@ module "keyvault_dr" {
   source = "../../modules/keyvault"
 
   name                = "${local.keyvault_name}-dr"
+  manage_values       = false
   name_prefix         = "${local.name}-dr"
   location            = var.dr_location
   resource_group_name = data.azurerm_resource_group.lab.name
@@ -200,8 +202,6 @@ locals {
     "app/admin-token-secret-name" = module.keyvault_dr[0].admin_token_secret_name
     "agc/id"                      = module.agc_dr[0].id
     "agc/frontend-name"           = module.agc_dr[0].frontend_name
-    "dns/hostname"                = "disabled"
-    "dns/acme-email"              = "disabled"
     "waf/policy-id"               = module.agc_dr[0].waf_policy_id
   }) : {}
 }

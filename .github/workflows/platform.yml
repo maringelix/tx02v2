@@ -8,6 +8,11 @@ name: platform
 on:
   workflow_dispatch:
     inputs:
+      target:
+        description: Lab runtime
+        type: choice
+        options: [primary, secondary]
+        default: primary
       action:
         description: install or uninstall
         type: choice
@@ -41,8 +46,10 @@ jobs:
     env:
       # Secrets, not variables: the logs of a public repository are public, and a secret is masked.
       APP_DEPLOYER_PRINCIPAL_IDS: ${{ secrets.LAB_APP_DEPLOYER_PRINCIPAL_IDS || '[]' }}
+      VELERO_REPOSITORY_PASSWORD: ${{ secrets.LAB_VELERO_REPOSITORY_PASSWORD }}
       SLACK_WEBHOOK_URL: ${{ secrets.LAB_SLACK_WEBHOOK_URL }}
       GITHUB_OWNER: ${{ github.repository_owner }}
+      TARGET: ${{ inputs.target }}
       PROFILE: ${{ inputs.profile }}
     steps:
       - name: Check repository variables
@@ -99,7 +106,7 @@ jobs:
           ACTION: ${{ inputs.action }}
         run: |
           case "$ACTION" in
-            install) bash platform/install.sh --profile "$PROFILE" --github-owner "$GITHUB_OWNER" ;;
-            uninstall) bash platform/uninstall.sh ;;
+            install) bash platform/install.sh --profile "$PROFILE" --github-owner "$GITHUB_OWNER" --target "$TARGET" ;;
+            uninstall) bash platform/uninstall.sh --target "$TARGET" ;;
             *) echo "::error::unknown action: $ACTION"; exit 1 ;;
           esac

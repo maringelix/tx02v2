@@ -30,6 +30,8 @@ source "$HERE/../scripts/lib/common.sh"
 source "$REPO_ROOT/scripts/lib/azure.sh"
 # shellcheck source=scripts/lib/platform.sh
 source "$REPO_ROOT/scripts/lib/platform.sh"
+# shellcheck source=scripts/lib/backup-credentials.sh
+source "$REPO_ROOT/scripts/lib/backup-credentials.sh"
 export PATH="$REPO_ROOT/.tools/bin:$PATH"
 
 ALB_CHART_OCI="oci://mcr.microsoft.com/application-lb/charts/alb-controller"
@@ -43,6 +45,7 @@ SECRET_STORE=azure-key-vault
 GATEWAY_CLASS_WAIT_SECONDS="${GATEWAY_CLASS_WAIT_SECONDS:-300}"
 WORK_DIR=""
 PROFILE=core
+TARGET=primary
 OWNER=""
 GATEWAY_API_RELEASES=https://github.com/kubernetes-sigs/gateway-api/releases/download
 PLATFORM_VAULT=""
@@ -61,7 +64,7 @@ AGC_ID=""
 AGC_FRONTEND=""
 
 usage() {
-  echo "usage: $0 [--profile core|full] [--github-owner OWNER]" >&2
+  echo "usage: $0 [--profile core|full] [--github-owner OWNER] [--target primary|secondary]" >&2
   exit 2
 }
 
@@ -232,7 +235,7 @@ apply_full() {
   for attempt in 1 2 3 4 5; do
     if "$HERE/render-manifests.sh" "$PLATFORM_VAULT" "$PLATFORM_DEPLOYERS" \
       --full "$OWNER" --acr-login-server "$ACR_LOGIN_SERVER" --agc-subnet-cidr "$AGC_SUBNET_CIDR" \
-      --only "$1" | kubectl apply -f - >/dev/null; then
+      --target "$TARGET" --only "$1" | kubectl apply -f - >/dev/null; then
       return 0
     fi
     log "kubectl apply of platform/manifests/$1 failed (attempt $attempt/5); retrying in 15 s"
@@ -260,7 +263,7 @@ install_chart() {
     content="${content//__VELERO_STORAGE_ACCOUNT_URI__/$VELERO_STORAGE_ACCOUNT_URI}"
     content="${content//__AZURE_SUBSCRIPTION_ID__/$AZURE_SUBSCRIPTION_ID}"
     content="${content//__AKS_NODE_RESOURCE_GROUP__/$AKS_NODE_RESOURCE_GROUP}"
-    content="${content//__S3_BUCKET__/tx02v2-lab-velero}"
+    content="${content//__S3_BUCKET__/$LAB_NAME-velero}"
     content="${content//__S3_ENDPOINT__/$VELERO_STORAGE_ACCOUNT_URI}"
     if [[ "$content" =~ __[A-Z][A-Z0-9_]*__ ]]; then
       die "unresolved install-time placeholder ${BASH_REMATCH[0]} in platform/$f"
@@ -359,7 +362,30 @@ install_image_admission() {
 }
 
 install_backup() {
+  ensure_velero_repository_credentials
   install_chart velero
+  apply_full full/backup-schedule.yaml
+  if [[ "$TARGET" == secondary ]]; then
+    local recovery_uri
+    recovery_uri="$(az storage account show --resource-group "$LAB_RESOURCE_GROUP" --name "tx02v2lab$(lab_suffix "$(subscription_id)")velero" --query secondaryEndpoints.blob --output tsv)"
+    [[ "$recovery_uri" =~ ^https://tx02v2lab[0-9a-f]{8}velero-secondary\.blob\.core\.windows\.net/?$ ]] ||
+      die 'Primary backups need RAGRS and an available secondary Blob endpoint'
+    kubectl apply -f - >/dev/null <<EOF
+apiVersion: velero.io/v1
+kind: BackupStorageLocation
+metadata:
+  name: primary-recovery
+  namespace: velero
+spec:
+  provider: azure
+  objectStorage:
+    bucket: tx02v2-lab-velero
+  accessMode: ReadOnly
+  config:
+    useAAD: "true"
+    storageAccountURI: ${recovery_uri%/}
+EOF
+  fi
   # shellcheck disable=SC2016 # expanded by the inner bash
   retry 30 5 bash -c '[[ "$(kubectl -n velero get backupstoragelocation default -o jsonpath="{.status.phase}")" == Available ]]' ||
     die "Velero: the Blob backup location is not Available (check the Workload Identity and container-scoped role assignment)"
@@ -369,6 +395,10 @@ install_edge_acme() {
   local rendered="$WORK_DIR/edge-acme.yaml"
   bash "$HERE/render-edge-acme.sh" "$DNS_HOSTNAME" "$ACME_EMAIL" "$AGC_ID" "$AGC_FRONTEND" >"$rendered"
   kubectl apply -f "$rendered" >/dev/null
+  if [[ "$TARGET" == secondary ]]; then
+    log 'Standby ACME resources prepared; restore the current TLS Secret before the pre-DNS application smoke.'
+    return
+  fi
   kubectl -n dx02v2 wait --for=condition=Programmed gateway/dx02v2 --timeout=600s >/dev/null ||
     die "the HTTP-only AGC Gateway was not programmed for the ACME challenge"
   kubectl wait --for=condition=Ready clusterissuer/tx02v2-letsencrypt-prod --timeout=300s >/dev/null ||
@@ -388,9 +418,10 @@ install_full() {
     die "cannot read the AKS node resource group for the Azure Workload Identity plugin"
   [[ "$AKS_NODE_RESOURCE_GROUP" =~ ^[A-Za-z0-9._()-]{1,90}$ ]] || die "AKS returned an invalid node resource group name"
   VELERO_CLIENT_ID="$(identity_client_id "$rg" "$LAB_NAME-velero")"
-  TRIVY_CLIENT_ID="$(identity_client_id "$rg" "$LAB_NAME-trivy")"
-  KYVERNO_CLIENT_ID="$(identity_client_id "$rg" "$LAB_NAME-kyverno")"
-  storage_name="${LAB_NAME//-/}$(lab_suffix "$sub")velero"
+  TRIVY_CLIENT_ID="$(identity_client_id "$rg" "$IDENTITY_PREFIX-trivy")"
+  KYVERNO_CLIENT_ID="$(identity_client_id "$rg" "$IDENTITY_PREFIX-kyverno")"
+  storage_name="tx02v2lab$(lab_suffix "$sub")velero"
+  [[ "$TARGET" != secondary ]] || storage_name="tx02v2$(lab_suffix "$sub")drvelero"
   storage_endpoint="$(az storage account show --resource-group "$rg" --name "$storage_name" --query primaryEndpoints.blob --output tsv)" ||
     die "cannot read the Blob endpoint of $storage_name"
   [[ "$storage_endpoint" =~ ^https://[A-Za-z0-9.-]+/ ]] || die "the Storage account returned an invalid Blob endpoint"
@@ -411,6 +442,7 @@ install_full() {
   apply_full full/app-security.yaml
   install_observability
   apply_full full/app-monitoring.yaml
+  apply_full full/continuity-monitoring.yaml
   install_policies
   install_image_admission
   install_gitops
@@ -433,6 +465,7 @@ main() {
         OWNER=$2
         shift 2
         ;;
+      --target) [[ "${2:-}" == primary || "${2:-}" == secondary ]] || usage; TARGET=$2; shift 2 ;;
       *) usage ;;
     esac
   done
@@ -441,6 +474,7 @@ main() {
   require_cmd az kubectl helm kubelogin
   require_az_login
   load_platform_versions
+  select_lab_target "$TARGET"
   WORK_DIR="$(mktemp -d)"
   trap cleanup EXIT
   mkdir -p "$WORK_DIR/helm/config" "$WORK_DIR/helm/cache" "$WORK_DIR/helm/data"
@@ -449,7 +483,7 @@ main() {
   load_contract
   rg="$(contract resource-group)"
   cluster="$(contract cluster-name)"
-  [[ "$rg" == "$LAB_NAME" && "$cluster" == "$LAB_NAME" ]] ||
+  [[ "$rg" == "$LAB_RESOURCE_GROUP" && "$cluster" == "$LAB_NAME" ]] ||
     die "contract keys resource-group and cluster-name are '$rg' and '$cluster', not $LAB_NAME"
   require_lab_cluster "$rg" "$cluster"
   if [[ "$PROFILE" == full ]]; then
@@ -461,7 +495,7 @@ main() {
       die "profile full needs the optional public DNS configuration (terraform variables app_domain_name, dns_zone_name and acme_contact_email)"
     [[ "$ACME_EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] ||
       die "contract key dns/acme-email is not a valid ACME contact email"
-    [[ "$AGC_ID" == "/subscriptions/$(subscription_id)/resourceGroups/$LAB_NAME/providers/Microsoft.ServiceNetworking/trafficControllers/$LAB_NAME-agc" ]] ||
+    [[ "$AGC_ID" == "/subscriptions/$(subscription_id)/resourceGroups/$LAB_RESOURCE_GROUP/providers/Microsoft.ServiceNetworking/trafficControllers/$LAB_NAME-agc" ]] ||
       die "contract key agc/id does not identify the AGC of this lab and active subscription"
     [[ "$AGC_FRONTEND" == "$LAB_NAME-frontend" ]] ||
       die "contract key agc/frontend-name does not identify the frontend of this lab"
@@ -485,9 +519,9 @@ main() {
   PLATFORM_DEPLOYERS="$deployers"
   tenant="$(tenant_id)" || die "cannot read the tenant of the Azure CLI session"
   mask "$tenant"
-  alb_client="$(identity_client_id "$rg" "$LAB_NAME-alb")"
-  eso_client="$(identity_client_id "$rg" "$LAB_NAME-eso")"
-  otel_client="$(identity_client_id "$rg" "$LAB_NAME-otel")"
+  alb_client="$(identity_client_id "$rg" "$IDENTITY_PREFIX-alb")"
+  eso_client="$(identity_client_id "$rg" "$IDENTITY_PREFIX-eso")"
+  otel_client="$(identity_client_id "$rg" "$IDENTITY_PREFIX-otel")"
   traces="$(traces_connection_string "$rg")"
   mask "$alb_client"
   mask "$eso_client"

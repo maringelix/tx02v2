@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- R9 Velero PVC recovery exercise: remove the original claim, PV and bytes, restore through
+  Kopia, require a new claim UID and identical SHA256. The local Velero node agent needs root
+  and kubelet hostPath; the server and application keep their restricted security contexts.
+  A private random repository password is generated before the first backup and preserved.
+
 - R9 continuity profiles `core|ha|dr`: opt-in zone-redundant PostgreSQL on General Purpose,
   configurable retention/PITR and geo backups, scoped delete lock, private cross-region replica,
   independent secondary AKS/VNet/ACR/Key Vault/App Configuration/AGC/Velero and exact Workload

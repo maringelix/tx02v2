@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- R9 continuity profiles `core|ha|dr`: opt-in zone-redundant PostgreSQL on General Purpose,
+  configurable retention/PITR and geo backups, scoped delete lock, private cross-region replica,
+  independent secondary AKS/VNet/ACR/Key Vault/App Configuration/AGC/Velero and exact Workload
+  Identity subjects. Local physical PostgreSQL backup and WAL/PITR drill rejects corrupt backups.
+  Cloud execution remains not run in Azure (v2); the R9 app proof is coordinated with dx02v2.
+
 - Optional lab-owned Azure DNS zone and app CNAME, with validated fork inputs and mocked Terraform
   tests. The full platform profile bootstraps a public Let's Encrypt certificate over AGC Gateway
   API HTTP-01 before enabling the app's HTTPS listener; core remains the low-cost HTTP exercise.

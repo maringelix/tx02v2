@@ -1226,6 +1226,9 @@ main() {
   WORK_DIR="$(mktemp -d)"
   trap cleanup EXIT
   check_database
+  "$REPO_ROOT/scripts/local/pitr-drill.sh" "$(tf_out_image postgres)" "$(tf_out docker_network)" \
+    "$(tf_out db_basebackup_volume)" "$(tf_out db_wal_volume)" || die "database: physical PITR drill failed"
+  pass "database: corrupted backup refused; physical PostgreSQL base backup + WAL recovered the chosen point"
   probe_namespaces
   deploy_echo
   check_mesh

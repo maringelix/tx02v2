@@ -35,6 +35,12 @@ variable "postgres_subnet_cidr" {
   type        = string
 }
 
+variable "postgres_peer_cidr" {
+  description = "Optional PostgreSQL subnet of the peered DR VNet; permits only TCP/5432 for private read-replica synchronization."
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "Contract tags applied to every taggable resource."
   type        = map(string)

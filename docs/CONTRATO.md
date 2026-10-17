@@ -1,4 +1,10 @@
-# Contrato tx02v2 <-> dx02v2 — versão 4 (2026-10-17)
+# Contrato tx02v2 <-> dx02v2 — versão 5 (2026-10-17)
+
+Versão 5 (R9): o perfil `postgres_profile=dr` publica as mesmas 17 chaves num App Configuration
+secundário, com região, AKS, rede, registry, Key Vault e AGC próprios. O deploy escolhe explicitamente
+o endpoint `dr_appconfig_endpoint` após fencing e promoção manual da réplica. O contrato primário
+conserva a interface v4; `ha` habilita HA/PITR sem mudar as chaves do app. Veja
+[CONTINUIDADE.md](CONTINUIDADE.md) e o PR coordenado R9 de dx02v2.
 
 Versão 4: zona DNS pública opcional, CNAME para o frontend do AGC e certificado ACME com renovação
 automática no perfil full. O contrato publica 17 chaves. A versão 3 adicionou ambient, GitOps e backup;

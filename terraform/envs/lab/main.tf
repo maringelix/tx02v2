@@ -61,6 +61,7 @@ module "network" {
   aks_nodes_subnet_cidr = var.aks_nodes_subnet_cidr
   agc_subnet_cidr       = var.agc_subnet_cidr
   postgres_subnet_cidr  = var.postgres_subnet_cidr
+  postgres_peer_cidr    = var.postgres_profile == "dr" ? var.dr_postgres_subnet_cidr : ""
   tags                  = local.tags
 }
 
@@ -105,15 +106,18 @@ module "aks" {
 module "postgres" {
   source = "../../modules/postgres"
 
-  name                   = local.postgres_name_prefix
-  location               = var.location
-  resource_group_name    = data.azurerm_resource_group.lab.name
-  delegated_subnet_id    = module.network.postgres_subnet_id
-  private_dns_zone_id    = module.network.postgres_private_dns_zone_id
-  backup_retention_days  = var.postgres_backup_retention_days
-  administrator_password = ephemeral.random_password.db.result
-  password_version       = var.db_password_version
-  tags                   = local.tags
+  name                         = local.postgres_name_prefix
+  location                     = var.location
+  resource_group_name          = data.azurerm_resource_group.lab.name
+  delegated_subnet_id          = module.network.postgres_subnet_id
+  private_dns_zone_id          = module.network.postgres_private_dns_zone_id
+  backup_retention_days        = var.postgres_backup_retention_days
+  sku_name                     = var.postgres_profile == "core" ? "B_Standard_B1ms" : var.postgres_ha_sku
+  continuity_profile           = var.postgres_profile
+  geo_redundant_backup_enabled = var.postgres_profile == "dr" || var.postgres_geo_backup
+  administrator_password       = ephemeral.random_password.db.result
+  password_version             = var.db_password_version
+  tags                         = local.tags
 
   # The private DNS zone must be linked to the VNet and the subnet NSG attached first.
   depends_on = [module.network]

@@ -32,6 +32,19 @@ jobs:
       TF_IN_AUTOMATION: "1"
       TF_INPUT: "0"
       TF_VAR_location: ${{ vars.LAB_LOCATION }}
+      TF_VAR_postgres_profile: ${{ vars.LAB_POSTGRES_PROFILE || 'core' }}
+      TF_VAR_postgres_ha_sku: ${{ vars.LAB_POSTGRES_HA_SKU || 'GP_Standard_D2ads_v5' }}
+      TF_VAR_postgres_backup_retention_days: ${{ vars.LAB_POSTGRES_BACKUP_RETENTION_DAYS || '7' }}
+      TF_VAR_postgres_geo_backup: ${{ vars.LAB_POSTGRES_GEO_BACKUP || 'false' }}
+      TF_VAR_postgres_delete_lock: ${{ vars.LAB_POSTGRES_DELETE_LOCK || 'false' }}
+      TF_VAR_dr_location: ${{ vars.LAB_DR_LOCATION || 'centralus' }}
+      TF_VAR_dr_vnet_cidr: ${{ vars.LAB_DR_VNET_CIDR || '10.21.0.0/16' }}
+      TF_VAR_dr_aks_nodes_subnet_cidr: ${{ vars.LAB_DR_AKS_NODES_SUBNET_CIDR || '10.21.0.0/22' }}
+      TF_VAR_dr_agc_subnet_cidr: ${{ vars.LAB_DR_AGC_SUBNET_CIDR || '10.21.4.0/24' }}
+      TF_VAR_dr_postgres_subnet_cidr: ${{ vars.LAB_DR_POSTGRES_SUBNET_CIDR || '10.21.5.0/24' }}
+      TF_VAR_dr_pod_cidr: ${{ vars.LAB_DR_POD_CIDR || '10.245.0.0/16' }}
+      TF_VAR_dr_service_cidr: ${{ vars.LAB_DR_SERVICE_CIDR || '10.1.0.0/16' }}
+      TF_VAR_dr_dns_service_ip: ${{ vars.LAB_DR_DNS_SERVICE_IP || '10.1.0.10' }}
       TF_VAR_github_owner: ${{ github.repository_owner }}
       TF_VAR_deploy_principal_id: ${{ vars.LAB_DEPLOY_PRINCIPAL_ID }}
       # Secrets, not variables: the logs of a public repository are public, and a secret is masked.

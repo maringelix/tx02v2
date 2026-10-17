@@ -4,6 +4,49 @@ mock_provider "azurerm" {
   source = "../../tests/mocks"
 }
 
+run "rejects_unknown_postgres_profile" {
+  command = plan
+  variables {
+    postgres_profile = "production"
+  }
+  expect_failures = [var.postgres_profile]
+}
+
+run "rejects_burstable_ha_sku" {
+  command = plan
+  variables {
+    postgres_profile = "ha"
+    postgres_ha_sku  = "B_Standard_B1ms"
+  }
+  expect_failures = [var.postgres_ha_sku]
+}
+
+run "rejects_same_region_for_dr" {
+  command = plan
+  variables {
+    postgres_profile = "dr"
+    dr_location      = "eastus2"
+  }
+  expect_failures = [var.dr_location]
+}
+
+run "rejects_unsupported_ha_region" {
+  command = plan
+  variables {
+    postgres_profile = "ha"
+    location         = "brazilsouth"
+  }
+  expect_failures = [var.postgres_profile, check.location_matches_resource_group]
+}
+
+run "rejects_overlapping_dr_subnets" {
+  command = plan
+  variables {
+    dr_postgres_subnet_cidr = "10.21.4.0/24"
+  }
+  expect_failures = [var.dr_vnet_cidr]
+}
+
 variables {
   github_owner                    = "maringelix"
   api_server_authorized_ip_ranges = ["203.0.113.10/32"]

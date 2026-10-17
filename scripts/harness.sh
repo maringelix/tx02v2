@@ -525,7 +525,9 @@ policy_terraform_blocks() {
           err(argline["value"], id ": secret values only through value_wo (write-only, never in plan or state)")
         if (btype == "azurerm_postgresql_flexible_server") {
           if (arg("public_network_access_enabled") != "false") err(bline, id ": PostgreSQL must set public_network_access_enabled = false (private access only)")
-          if (!("administrator_password_wo" in args)) err(bline, id ": the admin password must be set with administrator_password_wo")
+          if (arg("create_mode") == "\"Replica\"") {
+            if (!("source_server_id" in args)) err(bline, id ": a replica must name its source_server_id and inherit credentials")
+          } else if (!("administrator_password_wo" in args)) err(bline, id ": the admin password must be set with administrator_password_wo")
         }
         if (btype == "azurerm_postgresql_flexible_server_firewall_rule") err(bline, id ": no PostgreSQL firewall rules (private access only)")
         if (btype == "azurerm_storage_account" && arg("shared_access_key_enabled") != "false") err(bline, id ": storage accounts must set shared_access_key_enabled = false (Entra ID only)")
@@ -630,6 +632,31 @@ check_policy_terraform() {
     "the local lab must not reach a cloud (no cloud provider or remote backend in terraform/envs/local)" '*.tf' terraform/envs/local || rc=1
   forbid '^[[:space:]]*ip[[:space:]]*=[[:space:]]*"0\.0\.0\.0"|^[[:space:]]*privileged[[:space:]]*=[[:space:]]*true' \
     "local lab containers publish ports on 127.0.0.1 only and never run privileged" '*.tf' terraform/envs/local || rc=1
+  # Exercise the replica exception: it inherits the password only from a named source. The plain
+  # password ban above applies equally to primary instances, replicas and future create modes.
+  local fixture_dir="$HARNESS_WORK_DIR/postgres-policy-fixtures"
+  mkdir -p "$fixture_dir"
+  cat >"$fixture_dir/valid.tf" <<'EOF'
+resource "azurerm_postgresql_flexible_server" "replica" {
+  create_mode                   = "Replica"
+  source_server_id              = module.postgres.server_id
+  public_network_access_enabled = false
+}
+EOF
+  if ! policy_terraform_blocks "$fixture_dir/valid.tf"; then
+    echo "replica policy rejected inherited credentials from a named source"
+    rc=1
+  fi
+  sed '/source_server_id/d' "$fixture_dir/valid.tf" >"$fixture_dir/no-source.tf"
+  if policy_terraform_blocks "$fixture_dir/no-source.tf" >"$fixture_dir/no-source.log"; then
+    echo "replica policy accepted a replica with no source"
+    rc=1
+  fi
+  sed '/create_mode/a\  administrator_password = "placeholder-not-a-secret"' "$fixture_dir/valid.tf" >"$fixture_dir/plaintext.tf"
+  if policy_terraform_blocks "$fixture_dir/plaintext.tf" >"$fixture_dir/plaintext.log"; then
+    echo "replica policy accepted a plain text password"
+    rc=1
+  fi
   return "$rc"
 }
 

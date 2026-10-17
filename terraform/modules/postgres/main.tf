@@ -27,16 +27,23 @@ resource "azurerm_postgresql_flexible_server" "this" {
     active_directory_auth_enabled = false
   }
 
-  # Lab defaults: 7 days is the minimum Azure accepts; no geo-redundant backup, no HA.
+  # Defaults stay cheap. HA/DR use a General Purpose SKU and a zone-redundant standby.
   backup_retention_days        = var.backup_retention_days
-  geo_redundant_backup_enabled = false
+  geo_redundant_backup_enabled = var.geo_redundant_backup_enabled
+
+  dynamic "high_availability" {
+    for_each = var.continuity_profile == "core" ? [] : [1]
+    content {
+      mode = "ZoneRedundant"
+    }
+  }
 
   tags = var.tags
 
   lifecycle {
     # Azure picks an availability zone when none is set; ignoring it avoids a perpetual diff
     # (the provider can only change the zone through an HA failover).
-    ignore_changes = [zone]
+    ignore_changes = [zone, high_availability[0].standby_availability_zone]
   }
 }
 

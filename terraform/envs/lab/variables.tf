@@ -439,6 +439,134 @@ variable "postgres_backup_retention_days" {
   }
 }
 
+variable "postgres_profile" {
+  description = "core keeps the Burstable server; ha enables a zone-redundant standby; dr also enables geo backups and a secondary region."
+  type        = string
+  default     = "core"
+
+  validation {
+    condition     = contains(["core", "ha", "dr"], var.postgres_profile)
+    error_message = "postgres_profile must be core, ha, or dr."
+  }
+
+  validation {
+    condition     = var.postgres_profile == "core" || contains(["eastus2", "centralus"], var.location)
+    error_message = "The HA/DR teaching recipe supports the zone-redundant eastus2/centralus pair; validate another region's SKU/zone support before extending this catalog."
+  }
+
+}
+
+variable "postgres_ha_sku" {
+  description = "General Purpose SKU for HA/DR, because Azure does not support HA on Burstable PostgreSQL."
+  type        = string
+  default     = "GP_Standard_D2ads_v5"
+
+  validation {
+    condition     = can(regex("^GP_Standard_[A-Za-z0-9_]+$", var.postgres_ha_sku))
+    error_message = "postgres_ha_sku must be a General Purpose Flexible Server SKU, such as GP_Standard_D2ads_v5."
+  }
+}
+
+variable "postgres_geo_backup" {
+  description = "Opt-in asynchronous geo-redundant backups in the paired region; dr always enables it. Changing this after creation replaces the server."
+  type        = bool
+  default     = false
+}
+
+variable "postgres_delete_lock" {
+  description = "Optional Azure CanNotDelete management lock on the primary PostgreSQL server. Creating/removing locks requires an operator with lock permissions; the CI Contributor identity is not widened. Terraform destroy can remove its own lock deliberately."
+  type        = bool
+  default     = false
+}
+
+variable "dr_location" {
+  description = "Secondary Azure region for DR, different from location."
+  type        = string
+  default     = "centralus"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9]{2,30}$", var.dr_location)) && (var.postgres_profile != "dr" || var.dr_location != var.location)
+    error_message = "dr_location must be an Azure region different from the primary location in DR."
+  }
+
+  validation {
+    condition     = var.postgres_profile != "dr" || (var.location == "eastus2" && var.dr_location == "centralus") || (var.location == "centralus" && var.dr_location == "eastus2")
+    error_message = "The DR recipe uses the eastus2/centralus paired regions for geo backups and a private read replica."
+  }
+}
+
+variable "dr_vnet_cidr" {
+  description = "Address space of the isolated DR VNet."
+  type        = string
+  default     = "10.21.0.0/16"
+
+  validation {
+    condition     = try(cidrsubnet(var.dr_vnet_cidr, 0, 0) == var.dr_vnet_cidr && tonumber(split("/", var.dr_vnet_cidr)[1]) == 16 && cidrhost("${split("/", var.dr_vnet_cidr)[0]}/8", 0) == "10.0.0.0" && var.dr_vnet_cidr != var.vnet_cidr, false)
+    error_message = "dr_vnet_cidr must be a private canonical /16 outside the primary VNet."
+  }
+
+  validation {
+    condition = try(alltrue([
+      for subnet in [var.dr_aks_nodes_subnet_cidr, var.dr_agc_subnet_cidr, var.dr_postgres_subnet_cidr] :
+      cidrhost("${split("/", subnet)[0]}/16", 0) == cidrhost(var.dr_vnet_cidr, 0) &&
+      cidrsubnet(subnet, 0, 0) == subnet && tonumber(split("/", subnet)[1]) >= 22 && tonumber(split("/", subnet)[1]) <= 27
+      ]) && tonumber(split("/", var.dr_agc_subnet_cidr)[1]) == 24 && alltrue([
+      for pair in setproduct([var.dr_aks_nodes_subnet_cidr, var.dr_agc_subnet_cidr, var.dr_postgres_subnet_cidr], [var.dr_aks_nodes_subnet_cidr, var.dr_agc_subnet_cidr, var.dr_postgres_subnet_cidr]) :
+      pair[0] == pair[1] ||
+      cidrhost("${split("/", pair[0])[0]}/${min(tonumber(split("/", pair[0])[1]), tonumber(split("/", pair[1])[1]))}", 0) !=
+      cidrhost("${split("/", pair[1])[0]}/${min(tonumber(split("/", pair[0])[1]), tonumber(split("/", pair[1])[1]))}", 0)
+    ]) && length(distinct([var.dr_aks_nodes_subnet_cidr, var.dr_agc_subnet_cidr, var.dr_postgres_subnet_cidr])) == 3, false)
+    error_message = "DR subnets must be canonical, disjoint /22-/27 networks inside dr_vnet_cidr; AGC requires /24."
+  }
+
+  validation {
+    condition = try(alltrue([
+      for network in [var.dr_pod_cidr, var.dr_service_cidr] :
+      cidrsubnet(network, 0, 0) == network && tonumber(split("/", network)[1]) == 16 &&
+      cidrhost("${split("/", network)[0]}/8", 0) == "10.0.0.0"
+      ]) && length(distinct([var.dr_vnet_cidr, var.dr_pod_cidr, var.dr_service_cidr, var.vnet_cidr, var.pod_cidr, var.service_cidr])) == 6 &&
+      cidrhost("${var.dr_dns_service_ip}/16", 0) == cidrhost(var.dr_service_cidr, 0) &&
+    var.dr_dns_service_ip != cidrhost(var.dr_service_cidr, 0), false)
+    error_message = "DR Pod and Service networks must be distinct private /16 ranges, disjoint from both VNets and primary cluster ranges; DNS must be an interior Service IP."
+  }
+}
+
+variable "dr_aks_nodes_subnet_cidr" {
+  description = "AKS node subnet inside the DR VNet."
+  type        = string
+  default     = "10.21.0.0/22"
+}
+
+variable "dr_agc_subnet_cidr" {
+  description = "Application Gateway for Containers /24 subnet in the DR VNet."
+  type        = string
+  default     = "10.21.4.0/24"
+}
+
+variable "dr_postgres_subnet_cidr" {
+  description = "Delegated PostgreSQL subnet in the DR VNet."
+  type        = string
+  default     = "10.21.5.0/24"
+}
+
+variable "dr_pod_cidr" {
+  description = "Overlay Pod network of the DR AKS cluster."
+  type        = string
+  default     = "10.245.0.0/16"
+}
+
+variable "dr_service_cidr" {
+  description = "Kubernetes Services network of the DR AKS cluster."
+  type        = string
+  default     = "10.1.0.0/16"
+}
+
+variable "dr_dns_service_ip" {
+  description = "Cluster DNS Service IP inside dr_service_cidr."
+  type        = string
+  default     = "10.1.0.10"
+}
+
 variable "db_password_version" {
   description = "Increment to rotate the PostgreSQL password; it drives the server and the Key Vault secret together (write-only versions). Also bump it if a plan replaces the server."
   type        = number

@@ -95,6 +95,32 @@ run "postgres_server" {
   }
 }
 
+run "postgres_zone_redundant_ha_and_geo_backup" {
+  command = apply
+
+  module {
+    source = "../../modules/postgres"
+  }
+
+  variables {
+    sku_name                     = "GP_Standard_D2ads_v5"
+    continuity_profile           = "dr"
+    geo_redundant_backup_enabled = true
+    backup_retention_days        = 14
+  }
+
+  assert {
+    condition = (
+      azurerm_postgresql_flexible_server.this.sku_name == "GP_Standard_D2ads_v5" &&
+      azurerm_postgresql_flexible_server.this.high_availability[0].mode == "ZoneRedundant" &&
+      azurerm_postgresql_flexible_server.this.geo_redundant_backup_enabled == true &&
+      azurerm_postgresql_flexible_server.this.backup_retention_days == 14 &&
+      azurerm_postgresql_flexible_server.this.public_network_access_enabled == false
+    )
+    error_message = "HA/DR uses General Purpose, zone-redundant standby, geo backup and private access."
+  }
+}
+
 run "postgres_password_never_in_plan_or_state" {
   command = apply
 

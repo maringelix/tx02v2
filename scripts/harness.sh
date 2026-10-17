@@ -1056,7 +1056,7 @@ check_contract_platform() {
     rc=1
   }
   got="$(kubectl_local platform/local/manifests/argocd-project-dx02v2.yaml \
-    '{{if eq .kind "AppProject"}}{{range .spec.namespaceResourceWhitelist}}{{.group}}|{{.kind}}{{"\\n"}}{{end}}{{end}}')"
+    '{{if eq .kind "AppProject"}}{{range .spec.namespaceResourceWhitelist}}{{.group}}|{{.kind}}{{"\n"}}{{end}}{{end}}')"
   for kind in 'networking.istio.io|DestinationRule' 'security.istio.io|AuthorizationPolicy'; do
     grep -qFx "$kind" <<<"$got" || {
       printf 'local AppProject dx02v2 must allow the full-profile resource %s; got:\n%s\n' "$kind" "$got"

@@ -41,11 +41,11 @@ RENDER_VAULT_URI="https://tx02v2-lab-00000000.vault.azure.net/"
 RENDER_DEPLOYERS=(00000000-0000-0000-0000-000000000000 11111111-1111-1111-1111-111111111111)
 RENDER_AGC_SUBNET_CIDR="10.20.4.0/24"
 
-# Contract v2 (docs/CONTRATO.md): the App Configuration keys under tx02v2/lab/ that dx02v2 reads.
+# Contract v4 (docs/CONTRATO.md): the App Configuration keys under tx02v2/lab/ that dx02v2 reads.
 CONTRACT_KEYS=(
   location resource-group cluster-name vnet-cidr agc-subnet-cidr postgres-subnet-cidr acr/login-server
   keyvault/uri db/secret-name app/admin-token-secret-name eso/cluster-secret-store agc/id agc/frontend-name
-  waf/policy-id deploy/principal-id
+  dns/hostname dns/acme-email waf/policy-id deploy/principal-id
 )
 # Contract v3: rules of the Role dx02v2-deployer, one "apiGroup|resource|verbs" per resource
 # (verbs sorted). The ALB Controller 1.12.2 CRDs use singular-looking plurals on purpose.
@@ -115,6 +115,7 @@ REQUIRED_FILES=(
   platform/manifests/full/rbac-argocd-deployer.yaml platform/manifests/full/tracing.yaml
   platform/manifests/full/waypoint.yaml platform/manifests/full/app-security.yaml
   platform/manifests/full/app-monitoring.yaml platform/manifests/full/image-verification.yaml
+  platform/manifests/full/edge-acme.yaml platform/render-edge-acme.sh
   platform/gitops/Chart.yaml platform/gitops/values.yaml
   platform/gitops/templates/application.yaml platform/gitops/templates/appproject.yaml
   platform/full/policies/constraints/allowed-repos.yaml platform/full/policies/tests/pod-acr.yaml
@@ -987,7 +988,7 @@ check_shellcheck() {
 }
 
 check_kubeconform() {
-  local rendered="$HARNESS_WORK_DIR/platform-manifests.yaml" full="$HARNESS_WORK_DIR/platform-full-manifests.yaml"
+  local rendered="$HARNESS_WORK_DIR/platform-manifests.yaml" full="$HARNESS_WORK_DIR/platform-full-manifests.yaml" edge="$HARNESS_WORK_DIR/edge-acme.yaml"
   need kubeconform
   mkdir -p "$HARNESS_WORK_DIR/kubeconform-cache"
   render_platform >"$rendered"
@@ -1003,7 +1004,47 @@ check_kubeconform() {
     -cache "$HARNESS_WORK_DIR/kubeconform-cache" \
     -schema-location "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/$K8S_SCHEMA_REF/{{.NormalizedKubernetesVersion}}-standalone{{.StrictSuffix}}/{{.ResourceKind}}{{.KindSuffix}}.json" \
     -schema-location "https://raw.githubusercontent.com/datreeio/CRDs-catalog/$CRD_SCHEMA_REF/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json" \
-    "$full"
+    "$full" || return $?
+  bash platform/render-edge-acme.sh lab.example.com you@example.com \
+    /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ServiceNetworking/trafficControllers/tx02v2-lab-agc \
+    tx02v2-lab-frontend >"$edge"
+  kubeconform -strict -summary -output text -ignore-missing-schemas \
+    -kubernetes-version "$K8S_SCHEMA_KUBERNETES_VERSION" \
+    -cache "$HARNESS_WORK_DIR/kubeconform-cache" \
+    -schema-location "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/$K8S_SCHEMA_REF/{{.NormalizedKubernetesVersion}}-standalone{{.StrictSuffix}}/{{.ResourceKind}}{{.KindSuffix}}.json" \
+    -schema-location "https://raw.githubusercontent.com/datreeio/CRDs-catalog/$CRD_SCHEMA_REF/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json" \
+    "$edge"
+}
+
+check_edge_acme() {
+  local file="$HARNESS_WORK_DIR/edge-acme.yaml" id
+  need kubectl
+  id=/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ServiceNetworking/trafficControllers/tx02v2-lab-agc
+  bash platform/render-edge-acme.sh lab.example.com you@example.com "$id" tx02v2-lab-frontend >"$file" || return $?
+  [[ "$(kubectl_local "$file" '{{.kind}}/{{.metadata.name}}{{"\n"}}')" == $'Gateway/dx02v2\nClusterIssuer/tx02v2-letsencrypt-prod\nCertificate/dx02v2-tls' ]] || {
+    echo "the ACME bootstrap must render exactly the lab Gateway, ClusterIssuer and Certificate"
+    return 1
+  }
+  for wanted in \
+    'hostname: lab.example.com' \
+    'alb.networking.azure.io/alb-id: /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ServiceNetworking/trafficControllers/tx02v2-lab-agc' \
+    'server: https://acme-v02.api.letsencrypt.org/directory' \
+    'email: you@example.com' \
+    'gatewayHTTPRoute:' \
+    'serviceType: ClusterIP' \
+    'secretName: dx02v2-tls'; do
+    grep -qF "$wanted" "$file" || { echo "ACME bootstrap missing $wanted"; return 1; }
+  done
+  for bad in 'lab..example.com|you@example.com' 'lab.example.com|not-an-email'; do
+    if bash platform/render-edge-acme.sh "${bad%%|*}" "${bad#*|}" "$id" tx02v2-lab-frontend >/dev/null 2>&1; then
+      echo "the ACME renderer accepted invalid configuration: $bad"
+      return 1
+    fi
+  done
+  if bash platform/render-edge-acme.sh lab.example.com you@example.com "$id" another-frontend >/dev/null 2>&1; then
+    echo "the ACME renderer accepted a frontend outside the lab"
+    return 1
+  fi
 }
 
 # The platform layer of contract v3, parsed from the rendered manifests (kubectl, no cluster):
@@ -1255,7 +1296,7 @@ check_full_install_order() {
 }
 
 # The contract keys the lab writes to App Configuration (terraform/envs/lab/contract.tf) are
-# exactly the 15 keys of contract v3 (CONTRACT_KEYS, the list dx02v2 reads).
+# exactly the 17 keys of contract v4 (CONTRACT_KEYS, the list dx02v2 reads).
 check_contract_appconfig() {
   local rc=0 got want key
   got="$(awk '/^  contract_keys = \{/ { inside = 1; next } inside && /^  \}/ { inside = 0 } inside && /^    "[^"]+"[[:space:]]*=/ { k = $1; gsub(/"/, "", k); print k }' terraform/envs/lab/contract.tf | sort)"
@@ -1263,7 +1304,7 @@ check_contract_appconfig() {
   if [[ "$got" == "$want" ]]; then
     echo "terraform/envs/lab/contract.tf: the ${#CONTRACT_KEYS[@]} contract keys"
   else
-    echo "terraform/envs/lab/contract.tf must define exactly the ${#CONTRACT_KEYS[@]} keys of contract v3:"
+    echo "terraform/envs/lab/contract.tf must define exactly the ${#CONTRACT_KEYS[@]} keys of contract v4:"
     diff <(printf '%s\n' "$want") <(printf '%s\n' "$got") | sed -n 's/^</  missing:/p; s/^>/  unexpected:/p'
     rc=1
   fi
@@ -1857,6 +1898,7 @@ register_checks() {
   register static actionlint check_actionlint
   register static shellcheck check_shellcheck
   register static kubeconform check_kubeconform
+  register static edge-acme check_edge_acme
   register static helm-template check_helm_template
   register static helm-template-full check_helm_template_full
   register static platform-sizing check_platform_sizing

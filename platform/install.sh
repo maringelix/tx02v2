@@ -55,6 +55,10 @@ KYVERNO_CLIENT_ID=""
 VELERO_STORAGE_ACCOUNT_URI=""
 AZURE_SUBSCRIPTION_ID=""
 AKS_NODE_RESOURCE_GROUP=""
+DNS_HOSTNAME=""
+ACME_EMAIL=""
+AGC_ID=""
+AGC_FRONTEND=""
 
 usage() {
   echo "usage: $0 [--profile core|full] [--github-owner OWNER]" >&2
@@ -361,6 +365,19 @@ install_backup() {
     die "Velero: the Blob backup location is not Available (check the Workload Identity and container-scoped role assignment)"
 }
 
+install_edge_acme() {
+  local rendered="$WORK_DIR/edge-acme.yaml"
+  bash "$HERE/render-edge-acme.sh" "$DNS_HOSTNAME" "$ACME_EMAIL" "$AGC_ID" "$AGC_FRONTEND" >"$rendered"
+  kubectl apply -f "$rendered" >/dev/null
+  kubectl -n dx02v2 wait --for=condition=Programmed gateway/dx02v2 --timeout=600s >/dev/null ||
+    die "the HTTP-only AGC Gateway was not programmed for the ACME challenge"
+  kubectl wait --for=condition=Ready clusterissuer/tx02v2-letsencrypt-prod --timeout=300s >/dev/null ||
+    die "the Let's Encrypt ClusterIssuer did not become ready"
+  kubectl -n dx02v2 wait --for=condition=Ready certificate/dx02v2-tls --timeout=20m >/dev/null ||
+    die "the public certificate was not issued; verify DNS delegation, the CNAME and the HTTP-01 route before retrying"
+  log "public certificate ready for $DNS_HOSTNAME; the dx02v2 full overlay may add HTTPS and HTTP redirect"
+}
+
 install_full() {
   local rg=$1 cluster=$2 sub storage_name storage_endpoint value
   require_cmd openssl curl
@@ -385,10 +402,13 @@ install_full() {
   for value in "$AZURE_SUBSCRIPTION_ID" "$AKS_NODE_RESOURCE_GROUP" "$VELERO_CLIENT_ID" "$TRIVY_CLIENT_ID" "$KYVERNO_CLIENT_ID" "$VELERO_STORAGE_ACCOUNT_URI"; do mask "$value"; done
 
   apply_full full/namespaces.yaml
+  # Issue the HTTP-01 certificate before ambient mTLS and the app's edge policy are enabled.
+  # The challenge solver is short-lived and must be reachable from the public AGC HTTP listener.
+  install_chart cert-manager
+  install_edge_acme
   install_istio
   install_waypoint
   apply_full full/app-security.yaml
-  install_chart cert-manager
   install_observability
   apply_full full/app-monitoring.yaml
   install_policies
@@ -432,6 +452,20 @@ main() {
   [[ "$rg" == "$LAB_NAME" && "$cluster" == "$LAB_NAME" ]] ||
     die "contract keys resource-group and cluster-name are '$rg' and '$cluster', not $LAB_NAME"
   require_lab_cluster "$rg" "$cluster"
+  if [[ "$PROFILE" == full ]]; then
+    DNS_HOSTNAME="$(contract dns/hostname)"
+    ACME_EMAIL="$(contract dns/acme-email)"
+    AGC_ID="$(contract agc/id)"
+    AGC_FRONTEND="$(contract agc/frontend-name)"
+    [[ "$DNS_HOSTNAME" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ && "$DNS_HOSTNAME" == *.* && "$DNS_HOSTNAME" != disabled ]] ||
+      die "profile full needs the optional public DNS configuration (terraform variables app_domain_name, dns_zone_name and acme_contact_email)"
+    [[ "$ACME_EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] ||
+      die "contract key dns/acme-email is not a valid ACME contact email"
+    [[ "$AGC_ID" == "/subscriptions/$(subscription_id)/resourceGroups/$LAB_NAME/providers/Microsoft.ServiceNetworking/trafficControllers/$LAB_NAME-agc" ]] ||
+      die "contract key agc/id does not identify the AGC of this lab and active subscription"
+    [[ "$AGC_FRONTEND" == "$LAB_NAME-frontend" ]] ||
+      die "contract key agc/frontend-name does not identify the frontend of this lab"
+  fi
   vault="$(contract keyvault/uri)"
   deployer="$(contract deploy/principal-id)"
   store="$(contract eso/cluster-secret-store)"

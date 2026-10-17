@@ -14,6 +14,11 @@ spec:
     namespaceSelector:
       matchLabels:
         policy.lab/enforce: "true"
+    # cert-manager controls these short-lived pods; its pinned solver image is outside ACR.
+    labelSelector:
+      matchExpressions:
+        - key: acme.cert-manager.io/http01-solver
+          operator: DoesNotExist
   parameters:
     repos:
       - "__ACR_LOGIN_SERVER__/dx02v2/"

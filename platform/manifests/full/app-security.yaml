@@ -14,6 +14,9 @@ spec:
       mode: PERMISSIVE
     "8080":
       mode: PERMISSIVE
+    # cert-manager's short-lived HTTP-01 pod must remain reachable from AGC on renewal.
+    "8089":
+      mode: PERMISSIVE
 ---
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy

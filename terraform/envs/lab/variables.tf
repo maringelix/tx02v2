@@ -28,6 +28,48 @@ variable "github_owner" {
   }
 }
 
+variable "dns_zone_name" {
+  description = "Optional public DNS zone to create in the lab resource group; delegate its output name servers at your registrar. Set with app_domain_name and acme_contact_email for the full profile."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.dns_zone_name == "" || can(regex("^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$", var.dns_zone_name))
+    error_message = "dns_zone_name must be empty or a lowercase public domain such as example.com."
+  }
+}
+
+variable "app_domain_name" {
+  description = "Optional application subdomain in dns_zone_name, e.g. lab.example.com. The full platform profile requires this, the zone and an ACME contact email."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.app_domain_name == "" || can(regex("^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$", var.app_domain_name))
+    error_message = "app_domain_name must be empty or a lowercase DNS hostname."
+  }
+
+  validation {
+    condition = (
+      (var.app_domain_name == "" && var.dns_zone_name == "" && var.acme_contact_email == "") ||
+      (var.app_domain_name != "" && var.dns_zone_name != "" && var.acme_contact_email != "" &&
+      endswith(var.app_domain_name, ".${var.dns_zone_name}") && var.app_domain_name != ".${var.dns_zone_name}")
+    )
+    error_message = "Set app_domain_name, dns_zone_name and acme_contact_email together; the app hostname must be a subdomain of the delegated zone."
+  }
+}
+
+variable "acme_contact_email" {
+  description = "Contact email for Let's Encrypt ACME notices. Required when app_domain_name is set; published as a non-secret contract value."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.acme_contact_email == "" || can(regex("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$", var.acme_contact_email))
+    error_message = "acme_contact_email must be empty or a valid email address."
+  }
+}
+
 # --- Identities and access ---
 
 variable "deploy_principal_id" {

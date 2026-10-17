@@ -60,6 +60,16 @@ output "agc_frontend_fqdn" {
   value       = module.agc.frontend_fqdn
 }
 
+output "dns_hostname" {
+  description = "Application hostname when public DNS is configured, or disabled. HTTPS needs delegation and a successful ACME challenge."
+  value       = local.dns_enabled ? var.app_domain_name : "disabled"
+}
+
+output "dns_name_servers" {
+  description = "Delegate the optional lab-owned public zone to these Azure DNS name servers before platform/install.sh --profile full."
+  value       = local.dns_enabled ? azurerm_dns_zone.app[0].name_servers : []
+}
+
 output "waf_policy_id" {
   description = "WAF policy ID, or none when enable_waf = false."
   value       = module.agc.waf_policy_id

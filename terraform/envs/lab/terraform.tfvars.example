@@ -27,6 +27,13 @@ cluster_admin_principal_ids = [
 # roles of dx02v2-gha-deploy (repository-scoped ACR Writer, AKS Cluster User Role, App Configuration Data Reader).
 app_deployer_principal_ids = []
 
+# Optional public HTTPS for the full profile. The lab creates a public Azure DNS zone and a CNAME
+# for the app. Delegate the zone's dns_name_servers output at your domain registrar before running
+# platform/install.sh --profile full. The core profile leaves all three inputs empty and uses HTTP.
+# dns_zone_name      = "example.com"
+# app_domain_name    = "lab.example.com"
+# acme_contact_email = "ops@example.com"
+
 # Lab-friendly defaults (change only if you know the cost impact, see docs/CUSTOS.md):
 # enable_waf                = true
 # node_vm_size              = "Standard_D2als_v6"

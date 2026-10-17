@@ -84,10 +84,12 @@ run "contract_keys_in_app_configuration" {
       "tx02v2/lab/eso/cluster-secret-store",
       "tx02v2/lab/agc/id",
       "tx02v2/lab/agc/frontend-name",
+      "tx02v2/lab/dns/hostname",
+      "tx02v2/lab/dns/acme-email",
       "tx02v2/lab/waf/policy-id",
       "tx02v2/lab/deploy/principal-id",
     ])
-    error_message = "The lab must publish exactly the fifteen contract keys under tx02v2/lab/."
+    error_message = "The lab must publish exactly the seventeen contract keys under tx02v2/lab/."
   }
 
   assert {
@@ -105,6 +107,8 @@ run "contract_keys_in_app_configuration" {
       "eso/cluster-secret-store"    = "azure-key-vault"
       "agc/id"                      = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ServiceNetworking/trafficControllers/tx02v2-lab-agc"
       "agc/frontend-name"           = "tx02v2-lab-frontend"
+      "dns/hostname"                = "disabled"
+      "dns/acme-email"              = "disabled"
       "waf/policy-id"               = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.Network/applicationGatewayWebApplicationFirewallPolicies/tx02v2-lab-waf"
       "deploy/principal-id"         = "dddddddd-dddd-dddd-dddd-dddddddddddd"
     }

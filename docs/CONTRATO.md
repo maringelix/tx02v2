@@ -1,8 +1,8 @@
-# Contrato tx02v2 <-> dx02v2 — versão 3 (2026-10-16)
+# Contrato tx02v2 <-> dx02v2 — versão 4 (2026-10-17)
 
-Versão 3: labels ambient e Gatekeeper no namespace do app, GitOps com Argo CD no perfil full e backup
-Azure Blob com Workload ID. As 15 chaves da App Configuration não mudam. A versão 2 adicionou traces
-pelo OpenTelemetry Collector.
+Versão 4: zona DNS pública opcional, CNAME para o frontend do AGC e certificado ACME com renovação
+automática no perfil full. O contrato publica 17 chaves. A versão 3 adicionou ambient, GitOps e backup;
+a versão 2 adicionou traces pelo OpenTelemetry Collector.
 
 Interface entre a infraestrutura (este repositório) e a aplicação (`dx02v2`). Esta é a fonte da
 verdade: `dx02v2/docs/CONTRATO.md` repete a parte que o app usa e aponta para cá. Qualquer mudança
@@ -21,7 +21,8 @@ serviços equivalentes da Azure.
 | GitOps: app-of-apps do Argo CD, branch `gitops/azure` e RoleBinding restrita do deployer | `contract-platform`, `helm-template-full` | `verificado localmente` |
 | Application Insights dos traces só com ingestão por Entra ID (autenticação local desligada), workspace e limites diários | `terraform/envs/lab/tests/roles.tftest.hcl` (`traces_accept_only_entra_id_ingestion`) | `verificado localmente` |
 | Collector no namespace `observability`, exporter do Azure Monitor com Entra ID, mesmo digest do lab local | checks `contract-platform` e `helm-template` | `verificado localmente` |
-| As 15 chaves da App Configuration (prefixo, valores fixos, origem de cada valor) | `terraform/envs/lab/tests/lab.tftest.hcl`; o check `contract-appconfig` confere que `contract.tf` e a lista do harness são iguais e que cada chave tem uma linha na tabela deste arquivo | `verificado localmente` |
+| As 17 chaves da App Configuration (prefixo, valores fixos, origem de cada valor) | `terraform/envs/lab/tests/lab.tftest.hcl`; o check `contract-appconfig` confere que `contract.tf` e a lista do harness são iguais e que cada chave tem uma linha na tabela deste arquivo | `verificado localmente` |
+| Zona DNS pública opcional e CNAME do app apontando ao frontend do AGC | `terraform/envs/lab/tests/dns.tftest.hcl`; emissão pública depende da delegação no domínio do fork | `verificado localmente` |
 | Key Vault, segredos write-only, PostgreSQL, ACR | `terraform/envs/lab/tests/data_stores.tftest.hcl` | `verificado localmente` |
 | AGC, frontend, política de WAF (Prevention, DRS 2.1, Bot Manager 1.1, 128 KB) e `none` sem WAF | `terraform/envs/lab/tests/agc.tftest.hcl` | `verificado localmente` |
 | Subnet do AGC exatamente /24, CIDRs sem sobreposição | `terraform/envs/lab/tests/validations.tftest.hcl`, `network.tftest.hcl` | `verificado localmente` |
@@ -128,6 +129,8 @@ no dx02v2. Nenhum valor é segredo.
 | `eso/cluster-secret-store` | `azure-key-vault` |
 | `agc/id` | resource ID do Application Gateway for Containers |
 | `agc/frontend-name` | nome do frontend do AGC |
+| `dns/hostname` | subdomínio público do app ou `disabled` quando DNS não está configurado |
+| `dns/acme-email` | contato ACME do fork ou `disabled`; não é segredo |
 | `waf/policy-id` | resource ID da política de WAF, ou o literal `none` quando o tx02v2 roda com `enable_waf = false` |
 | `deploy/principal-id` | object ID de `dx02v2-gha-deploy` |
 
@@ -217,7 +220,9 @@ executados (`não executado em nuvem (v2)`).
 - Tráfego (só Azure): Gateway `dx02v2` (classe `azure-alb-external`, anotação
   `alb.networking.azure.io/alb-id` = `agc/id`, e uma entrada em `spec.addresses` do tipo
   `alb.networking.azure.io/alb-frontend` com o valor `agc/frontend-name` — a forma "bring your own"
-  da documentação do AGC), listener HTTP na porta 80 (HTTPS `planejado`); HTTPRoute: `/api` →
+  da documentação do AGC). O perfil core usa HTTP na porta 80; o full usa HTTPS na porta 443 com o
+  Secret `dx02v2-tls` emitido e renovado por cert-manager/Let's Encrypt e redireciona HTTP para
+  HTTPS. HTTPRoute: `/api` →
   `api:3000`, `/` → `web:8080`; HealthCheckPolicy: web `/healthz`, api `/readyz`;
   WebApplicationFirewallPolicy apontando para o Gateway com `waf/policy-id` (omitida quando é `none`).
 - A subnet do AGC (`agc-subnet-cidr`) é exatamente um /24: o Application Gateway for Containers com
@@ -227,8 +232,9 @@ executados (`não executado em nuvem (v2)`).
   (o smoke do dx02v2 manda 70 KB) chegam à API, que responde 413 ela mesma (o WAF da AWS responde 403
   acima de 8 KB). Nenhuma regra personalizada pode bloquear o smoke test; se uma regra de limite de
   taxa for adicionada, o limite precisa ser >= 300 requisições por minuto por cliente.
-- NetworkPolicies na Azure: entrada em web:8080 e api:3000 só a partir de `agc-subnet-cidr`; saída
-  da api para `postgres-subnet-cidr`:5432; DNS.
+- NetworkPolicies na Azure: entrada em web:8080 e api:3000 só a partir de `agc-subnet-cidr`; no perfil
+  full, o solver ACME temporário recebe apenas `agc-subnet-cidr`:8089 para as renovações; saída da api
+  para `postgres-subnet-cidr`:5432; DNS. O mTLS permite HTTP de AGC só na porta 8089 do solver.
 - PostgreSQL Flexible Server 17, porta 5432, só acesso privado (subnet delegada + zona DNS privada),
   `require_secure_transport = on`, TLS >= 1.2.
 
@@ -266,7 +272,7 @@ Publicado por `platform/local/install.sh` no ConfigMap `lab-system/lab-contract`
 | `app.admin-token-secret-name` | `tx02v2-lab-app-admin-token` (chave `token`; no Key Vault é uma string pura) | `app/admin-token-secret-name` |
 | `eso.cluster-secret-store` | `local-secrets` (só o namespace `dx02v2`) | `eso/cluster-secret-store` |
 | `gateway.class` | `istio` (Gateway API) | GatewayClass `azure-alb-external` (com `agc/id` e `agc/frontend-name`) |
-| `tls.cluster-issuer` | `lab-ca` (cert-manager) | — (HTTPS no listener do AGC `planejado`) |
+| `tls.cluster-issuer` | `lab-ca` (cert-manager) | `tx02v2-letsencrypt-prod` no perfil full, com ACME HTTP-01 e domínio do fork |
 | `gitops.push-url`, `gitops.read-url` | `ssh://10.251.0.13:23231/dx02v2-gitops`, `http://10.251.0.13:23232/dx02v2-gitops.git` | — |
 | `gitops.push-key-secret` | `lab-secrets/gitops-push-key` (chave SSH do push, `kubernetes.io/ssh-auth`) | identidade `dx02v2-gha-deploy` |
 | `argocd.project` | `dx02v2` (AppProject: só o repositório GitOps, só o namespace `dx02v2`, só os kinds do deploy, nada de Secret ou recurso de cluster) | Role `dx02v2-deployer` |

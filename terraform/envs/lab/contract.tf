@@ -16,6 +16,8 @@ locals {
     "eso/cluster-secret-store"    = "azure-key-vault"
     "agc/id"                      = module.agc.id
     "agc/frontend-name"           = module.agc.frontend_name
+    "dns/hostname"                = local.dns_enabled ? var.app_domain_name : "disabled"
+    "dns/acme-email"              = local.dns_enabled ? var.acme_contact_email : "disabled"
     "waf/policy-id"               = module.agc.waf_policy_id
     "deploy/principal-id"         = var.deploy_principal_id
   }

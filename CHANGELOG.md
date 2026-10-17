@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Optional lab-owned Azure DNS zone and app CNAME, with validated fork inputs and mocked Terraform
+  tests. The full platform profile bootstraps a public Let's Encrypt certificate over AGC Gateway
+  API HTTP-01 before enabling the app's HTTPS listener; core remains the low-cost HTTP exercise.
+
 - Azure profile `full` with 16 pinned charts, ambient Istio with an L7 waypoint, app SLO metrics and
   dashboard, Argo CD GitOps, Gatekeeper, Kyverno image-signature admission, Trivy scans of private
   ACR repositories, Velero on Azure Blob through Workload ID with 35-day retention, and Chaos Mesh.
@@ -20,10 +24,13 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
-- Cloud contract version 3 adds ambient and Gatekeeper namespace labels, GitOps branch and backup
-  semantics. The 15 App Configuration keys and the separate local contract v2 are unchanged.
-- The Azure full profile keeps the 15-key App Configuration contract at version 3; its new image
-  promotion, SLO, storage and waypoint requirements are documented in `docs/CONTRATO.md`.
+- Cloud contract version 4 publishes the app hostname and ACME contact as two additional App
+  Configuration keys. The coordinated dx02v2 full overlay consumes the resulting TLS Secret.
+
+- Cloud contract version 3 previously added ambient and Gatekeeper namespace labels, GitOps and
+  backup semantics. The separate local contract remains version 2.
+- The full profile's image promotion, SLO, storage, waypoint and public TLS requirements are
+  documented in `docs/CONTRATO.md`.
 
 ### Security
 

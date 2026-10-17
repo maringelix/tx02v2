@@ -206,6 +206,17 @@ main() {
 
   stop_gitops
 
+  # The TLS material belongs to this lab, including the ACME account key. Remove it while
+  # cert-manager is still running, then remove the routes and its release below.
+  if crd_exists certificates.cert-manager.io; then
+    kubectl delete certificate dx02v2-tls --namespace dx02v2 --ignore-not-found --wait=true --timeout=5m
+  fi
+  if crd_exists clusterissuers.cert-manager.io; then
+    kubectl delete clusterissuer tx02v2-letsencrypt-prod --ignore-not-found --wait=true --timeout=5m
+  fi
+  kubectl delete secret dx02v2-tls --namespace dx02v2 --ignore-not-found --wait=true --timeout=5m
+  kubectl delete secret tx02v2-letsencrypt-account --namespace cert-manager --ignore-not-found --wait=true --timeout=5m
+
   remove_full_application_resources
   remove_waypoint
   delete_all imagevalidatingpolicies.policies.kyverno.io

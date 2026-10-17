@@ -98,6 +98,13 @@ lab precisa de 4 vCPUs da família, 6 durante um upgrade (surge de 1 nó) ou com
 
 ## Custo adicional do perfil full
 
+O perfil full também exige um domínio registrado pelo operador. O Terraform cria uma zona Azure DNS
+pública e um CNAME; a zona e as consultas são cobradas à parte, conforme a
+[tabela oficial do Azure DNS](https://azure.microsoft.com/en-us/pricing/details/dns/). O preço do
+registro do domínio e da renovação no registrador não está incluído. O certificado Let's Encrypt não
+exige compra, mas o desafio HTTP-01 depende de delegação pública e do AGC ligado. Consulte os preços
+da sua oferta antes da rodada; o total abaixo não inclui DNS nem domínio.
+
 O perfil full precisa de mais memória que o perfil core. Para os valores de referência de 2026-10-16, o runbook usa dois nós `Standard_D2as_v5` (2 vCPU, 8 GiB), a US$0,086/h por nó, em vez de dois `Standard_D2als_v6` (2 vCPU, 4 GiB) a US$0,0804/h. O acréscimo é US$0,0112/h para o pool, calculado com preços pay-as-you-go de eastus2. O perfil full também usa ACR Standard para habilitar ABAC por repositório.
 
 | Cenário | US$/hora | US$/dia | US$/mês (730 h) |

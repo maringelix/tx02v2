@@ -47,6 +47,9 @@ jobs:
       TF_VAR_api_server_authorized_ip_ranges: ${{ secrets.LAB_API_SERVER_AUTHORIZED_IP_RANGES }}
       TF_VAR_allow_api_server_from_anywhere: ${{ vars.LAB_ALLOW_API_SERVER_FROM_ANYWHERE || 'false' }}
       TF_VAR_enable_waf: ${{ vars.LAB_ENABLE_WAF || 'true' }}
+      TF_VAR_dns_zone_name: ${{ vars.LAB_DNS_ZONE_NAME || '' }}
+      TF_VAR_app_domain_name: ${{ vars.LAB_APP_DOMAIN_NAME || '' }}
+      TF_VAR_acme_contact_email: ${{ vars.LAB_ACME_CONTACT_EMAIL || '' }}
       TF_VAR_node_vm_size: ${{ vars.LAB_NODE_VM_SIZE || 'Standard_D2als_v6' }}
       TF_VAR_node_count: ${{ vars.LAB_NODE_COUNT || '2' }}
     steps:

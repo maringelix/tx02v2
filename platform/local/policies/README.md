@@ -16,6 +16,11 @@ Todas em `deny` (no v1 a maioria ficava em `dryrun` com o audit desligado), nos 
 `policy.lab/enforce=true` (o `dx02v2`). Privilegiado, hostPath e hostNetwork ficam com o Pod Security
 Admission `restricted`, que não precisa de pod extra.
 
+Os pods temporários `acme.cert-manager.io/http01-solver=true` ficam fora das cinco constraints de
+Pod: o cert-manager controla sua imagem e formato, que não seguem os requisitos da aplicação. No
+perfil full, o solver usa Service `ClusterIP` e recebe tráfego somente da subnet do AGC na porta
+8089. O deployer do app não deve ter permissão para criar Pods arbitrários com esse label.
+
 Como é verificado:
 
 - `tests/suite.yaml`: casos aceitos e recusados de cada política (`gator verify`, check `policy-gator`

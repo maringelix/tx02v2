@@ -124,6 +124,9 @@ variáveis e os secrets `LAB_*` que você escolhe vêm da tabela abaixo.
 | `LAB_ALLOW_API_SERVER_FROM_ANYWHERE` | `true` | `TF_VAR_allow_api_server_from_anywhere` | opcional, padrão `false`; obrigatório com `0.0.0.0/0` |
 | `LAB_APP_DEPLOYER_PRINCIPAL_IDS` (**secret**) | `[]` | `TF_VAR_app_deployer_principal_ids` e o workflow `platform` (RoleBinding) | opcional, padrão `[]`; object IDs de quem faz deploy do dx02v2 de um laptop |
 | `LAB_ENABLE_WAF` | `true` | `TF_VAR_enable_waf` | opcional, padrão `true` (`docs/CUSTOS.md`) |
+| `LAB_DNS_ZONE_NAME` | `example.com` | `TF_VAR_dns_zone_name` | obrigatório com os dois valores seguintes no perfil full; Terraform cria a zona pública no grupo do lab |
+| `LAB_APP_DOMAIN_NAME` | `lab.example.com` | `TF_VAR_app_domain_name` | subdomínio da zona acima; CNAME aponta ao frontend do AGC |
+| `LAB_ACME_CONTACT_EMAIL` | `you@example.com` | `TF_VAR_acme_contact_email` | contato não secreto para avisos de renovação do Let's Encrypt |
 | `LAB_NODE_VM_SIZE` | `Standard_D2as_v5` | `TF_VAR_node_vm_size` em plan/apply/destroy | opcional; padrão `Standard_D2als_v6`; use D2as_v5 para o perfil full |
 | `LAB_NODE_COUNT` | `2` | `TF_VAR_node_count` em plan/apply/destroy | opcional; 1–3, padrão `2`; mantenha o mesmo valor até destroy |
 | `LAB_SLACK_WEBHOOK_URL` (**secret**) | URL de incoming webhook do Slack | workflow `platform`, perfil full | opcional; guardado em Secret do cluster, nunca nos values versionados |
@@ -153,6 +156,13 @@ O job `deploy-azure` do dx02v2 roda no environment `lab` daquele repositório (s
    plano no resumo do job (GUIDs e sufixo substituídos).
 2. Dispare `terraform-apply` e aprove o environment `lab`. O job planeja e aplica no mesmo run e
    escreve os outputs no resumo.
+
+Para o perfil full, configure as três variáveis de DNS da seção 3 antes do plan/apply. Depois do
+apply, copie `dns_name_servers` para a delegação da zona no registrador do domínio e espere a
+resolução pública de `LAB_APP_DOMAIN_NAME` apontar ao `agc_frontend_fqdn` via CNAME. O Terraform
+controla a zona e o registro, mas não compra o domínio nem altera a delegação no registrador. Sem
+essa etapa, o desafio ACME do passo seguinte falha. O perfil core deixa as três variáveis vazias e
+segue com HTTP de demonstração.
 
 Alternativa local (suas credenciais). Owner não tem os papéis de dados que o apply usa
 (`docs/ARQUITETURA.md`, "O dono da assinatura não lê dados"); dê-os a você no grupo do lab e remova
@@ -194,14 +204,25 @@ mantenha `LAB_NODE_COUNT=2`. O workflow precisa de `tx02v2-gha-apply` em
    `tx02v2-lab-otel` e a connection string do Application Insights `tx02v2-lab-traces` num ConfigMap,
    e espera o `azure-key-vault` ficar `Ready` (o ESO alcançou o Key Vault).
 
-No perfil `full`, o instalador acrescenta Istio ambient, cert-manager, observabilidade no cluster,
-Argo CD com GitOps, Gatekeeper, Trivy Operator, Velero Azure Blob e Chaos Mesh (15 charts fixados no
-total). O app-of-apps lê `platform/gitops` do tx02v2 na branch `main`; o Argo CD acompanha o repositório
+No perfil `full`, o instalador exige DNS delegado, instala cert-manager e cria primeiro um Gateway
+HTTP para o desafio ACME HTTP-01. Espera o certificado `dx02v2-tls` ficar Ready antes de instalar
+as políticas de mTLS e antes do deploy do app. O cert-manager renova o Secret; o Gateway HTTPS do
+dx02v2 o referencia. Na renovação, a rota HTTP-01 mais específica continua acessível na porta 80;
+o `dx02v2` só admite tráfego da subnet do AGC ao solver na porta 8089. Esta emissão pública e a
+renovação ainda não foram executadas em Azure.
+
+O instalador acrescenta Istio ambient com waypoint, observabilidade no
+cluster, Argo CD com GitOps, Gatekeeper, Kyverno, Trivy Operator, Velero Azure Blob e Chaos Mesh (16
+charts fixados no total). O app-of-apps lê `platform/gitops` do tx02v2 na branch `main`; o Argo CD acompanha o repositório
 público do dx02v2 na branch `gitops/azure` e sincroniza `deploy/k8s/overlays/azure`. O workflow
 `deploy-azure` do dx02v2 publica essa branch e configura o overlay, as imagens e os IDs/CIDRs na
 Application viva. A branch recebe apenas parâmetros de exemplo; IDs e CIDRs reais ficam no cluster.
-Argo CD fica ClusterIP; use `kubectl port-forward` para acessar a UI. `platform/uninstall.sh` remove
-primeiro as Applications para impedir que o Argo CD recrie rotas durante o teardown.
+Argo CD fica ClusterIP; use `kubectl port-forward` para acessar a UI. Kyverno exige que as imagens da
+API e do web estejam referenciadas por digest e tenham uma atestação de promoção assinada pelo
+workflow `deploy-azure.yml` do fork. Trivy e Kyverno acessam o ACR por Workload ID e têm leitura só nos
+dois repositórios da aplicação. `platform/uninstall.sh` remove primeiro as Applications para impedir
+que o Argo CD recrie rotas durante o teardown, depois remove as policies Kyverno e os PVCs de
+monitoramento (discos `managed-csi` incluídos).
 
 O Velero grava recursos Kubernetes no container Blob privado com a identidade federada do ServiceAccount
 `velero/velero`; não faz snapshots nem cobre o PostgreSQL. Uma verificação de backup após uma rodada
@@ -263,7 +284,7 @@ kubectl -n dx02v2 get role,rolebinding
 
 ## 6. Deploy do app (dx02v2)
 
-Siga o runbook do dx02v2: com as variáveis da seção 3, o workflow `deploy-azure` lê as 15 chaves
+Siga o runbook do dx02v2: com as variáveis da seção 3, o workflow `deploy-azure` lê as 17 chaves
 `tx02v2/lab/*`, publica `dx02v2/api` e `dx02v2/web` no ACR (tag = SHA do commit, nunca sobrescrita)
 e cria o ConfigMap `azure-pg-ca`. Com o perfil `full`, `mode=gitops` (padrão) configura na Application
 viva o overlay `azure-waf` (ou `azure`, quando `waf/policy-id` é `none`), as imagens e os parâmetros

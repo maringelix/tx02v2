@@ -25,6 +25,29 @@ serviceMonitor:
     - port: spanmetrics
       interval: 10s
 config:
+  receivers:
+    # Synthetic checks of the app from inside the cluster (the SyntheticProbeFailed alert of
+    # platform/manifests/full/app-monitoring.yaml reads httpcheck_status). The Collector is in the ambient
+    # mesh (namespace observability), so the API admits its probe by identity.
+    httpcheck:
+      collection_interval: 30s
+      initial_delay: 5s
+      targets:
+        - endpoint: http://web.dx02v2.svc:8080/healthz
+          validations:
+            - json_path: $.status
+              equals: ok
+        - endpoint: http://api.dx02v2.svc:3000/readyz
+          validations:
+            - json_path: $.status
+              equals: ready
+      metrics:
+        httpcheck.duration:
+          enabled: true
+        httpcheck.validation.failed:
+          enabled: true
+        httpcheck.validation.passed:
+          enabled: true
   connectors:
     spanmetrics:
       namespace: traces.span.metrics
@@ -56,4 +79,8 @@ config:
       metrics/spanmetrics:
         receivers: [spanmetrics]
         processors: [batch]
+        exporters: [prometheus]
+      metrics/httpcheck:
+        receivers: [httpcheck]
+        processors: [memory_limiter, resource/lab, batch]
         exporters: [prometheus]

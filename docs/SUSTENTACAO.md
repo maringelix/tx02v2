@@ -54,7 +54,7 @@ cobre o app (ver `dx02v2`), mas lista o que precisa mudar junto com ele.
 | Exceções do trivy | 2 entradas (`AZU-0012`, `AZU-0013`) | 2027-04-30 | `.trivyignore.yaml` | Revisar até abril de 2027 (5.9) |
 | Istio (lab local) | 1.31.1 | ~2027-02 (6 semanas depois da 1.33) | [releases suportadas](https://istio.io/latest/docs/releases/supported-releases/) | Trimestral (5.12), junto com o tx01v2 |
 | Demais charts do lab local | `platform/local/versions.env` (cert-manager 1.21.2, kube-prometheus-stack 92.3.0, Loki 7.3.0, Alloy 1.13.1, Tempo 3.1.0, OpenTelemetry Collector 0.176.0, Argo CD 10.10.3, Gatekeeper 3.23.1, Trivy Operator 0.37.0, Velero 12.2.1, Chaos Mesh 2.8.4, metrics-server 3.14.0) | cada projeto mantém as versões recentes | releases de cada projeto | Trimestral (5.12), junto com o tx01v2 |
-| Charts do perfil full cloud | `platform/full/charts.txt`, com os pins locais e o Collector cloud; o plugin Velero Azure v1.14.4 tem digest fixado em `platform/values/full/velero.yaml` | cada projeto mantém as versões recentes | releases oficiais de cada projeto | Trimestral (5.13), junto com tx01v2 |
+| Charts do perfil full cloud | `platform/full/charts.txt`, com os pins locais, o Collector cloud e Kyverno 3.8.2; o plugin Velero Azure v1.14.4 tem digest fixado em `platform/values/full/velero.yaml` | cada projeto mantém as versões recentes | releases oficiais de cada projeto | Trimestral (5.13), junto com tx01v2 |
 | Imagens dos serviços emulados | registry 3.1.2, Versity S3 Gateway 1.8.0, Soft Serve 0.12.3, cloud-provider-kind 0.12.0, PostgreSQL 17 | sem data fixa | `terraform/envs/local/images.tf` | Trimestral (5.12) |
 | kind / gator | 0.33.0 (nó `kindest/node:v1.36.4`) / 3.23.1 | sem política publicada | releases do kind e do Gatekeeper | Trimestral (5.12); o nó segue o minor do AKS do lab |
 
@@ -213,6 +213,12 @@ lab local; os overlays Azure ficam em `platform/values/full`. Antes de atualizar
 charts com `helm-template-full`, confira namespaces, ServiceAccounts e digests, e compare os pins com
 o tx01v2. Mudanças na branch, caminho do overlay ou permissões GitOps também exigem atualização
 coordenada do contrato no dx02v2.
+
+O perfil full também usa Kyverno 3.8.2 para verificar, em modo fail-closed, as atestações Sigstore de
+promoção do dx02v2. Ao atualizar o chart, confira o CRD `ImageValidatingPolicy`, a identidade
+federada e a permissão ABAC de leitura no ACR. O Trivy Operator usa uma identidade separada com a
+mesma leitura limitada aos repositórios `dx02v2/api` e `dx02v2/web`; não volte a conceder AcrPull ou
+AcrPush no registry inteiro.
 
 O plugin `velero-plugin-for-microsoft-azure` é fixado em v1.14.4 com digest na overlay. Atualizações
 devem revisar a release oficial, o uso de Workload ID e `useAAD`, e as variáveis

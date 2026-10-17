@@ -22,7 +22,7 @@ em nuvem (`não executado em nuvem (v2)`).
 | PostgreSQL Flexible Server `B_Standard_B1ms` | 1 | US$0,017/h | 0,017 | 0,41 | 12,41 |
 | Armazenamento do PostgreSQL | 32 GB | US$0,115/GB-mês | 0,005 | 0,12 | 3,68 |
 | Backup do PostgreSQL (7 dias, LRS) | até 32 GB | sem custo até 100 % do armazenamento provisionado; acima, US$0,095/GB-mês | 0,000 | 0,00 | 0,00 |
-| ACR Basic | 1 registry (10 GB incluídos) | US$0,1666/dia | 0,007 | 0,17 | 5,07 |
+| ACR Standard (ABAC por repositório) | 1 registry (10 GB incluídos) | US$0,6666/dia | 0,0278 | 0,67 | 20,28 |
 | Zona DNS privada do PostgreSQL | 1 | US$0,50/zona-mês + US$0,40/milhão de consultas | 0,001 | 0,02 | 0,50 |
 | Key Vault Standard | 2 segredos | US$0,03 por 10 mil operações | ~0 | ~0 | centavos |
 | App Configuration Free | 1 store | sem custo (limite de 1.000 requisições por dia) | 0,000 | 0,00 | 0,00 |
@@ -30,19 +30,23 @@ em nuvem (`não executado em nuvem (v2)`).
 | Log Analytics (opcional, `enable_control_plane_logs = false`) | teto de 0,5 GB/dia | US$2,76/GB depois de 5 GB/mês grátis por conta de faturamento; 31 dias de retenção sem custo | (até 0,058) | (até 1,38) | (até ~28; ~42 se a franquia já estiver usada) |
 | State do Terraform (Blob Hot LRS, bootstrap) | poucos KB | US$0,0184/GB-mês + operações | ~0 | ~0 | centavos |
 | Managed identities, VNet, NSG, budget | — | sem cobrança | 0,000 | 0,00 | 0,00 |
-| **Total com WAF (padrão)** | | | **~0,513** | **~12,30** | **~374** |
-| **Total sem WAF** | | | **~0,389** | **~9,33** | **~284** |
+| **Total com WAF (padrão)** | | | **~0,534** | **~12,81** | **~389** |
+| **Total sem WAF** | | | **~0,410** | **~9,84** | **~299** |
 
 Hipóteses: 1 frontend, 1 associação e cerca de 1 unidade de capacidade de AGC (tráfego de
 laboratório; o consumo real depende de conexões, throughput e computação); 2 nós o tempo todo (o
 autoscaler pode descer a 1 com pouca carga ou subir a 3); logs do plano de controle desligados
 (padrão).
 
+O ACR Standard é necessário para RBAC com ABAC por repositório. Em relação ao Basic usado antes,
+o preço de referência sobe US$0,50/dia (US$0,0208/h ou cerca de US$15,21 por 730 horas). As tabelas
+usam o preço pay-as-you-go consultado na [Azure Retail Prices API](https://learn.microsoft.com/en-us/rest/api/cost-management/retail-prices/azure-retail-prices).
+
 Leituras rápidas:
 
-- Uma rodada de 3 horas (apply → plataforma → deploy → smoke → destroy) custa cerca de US$1,54 com
-  WAF e US$1,17 sem. Load Balancer, AGC e PostgreSQL cobram hora parcial como hora cheia.
-- Esquecido ligado, o lab custa cerca de US$12,30 por dia com WAF: o budget padrão (25 na moeda de
+- Uma rodada de 3 horas (apply → plataforma → deploy → smoke → destroy) custa cerca de US$1,60 com
+  WAF e US$1,23 sem. Load Balancer, AGC e PostgreSQL cobram hora parcial como hora cheia.
+- Esquecido ligado, o lab custa cerca de US$12,81 por dia com WAF: o budget padrão (25 na moeda de
   faturamento) passa de 50 % em cerca de um dia e de 100 % em cerca de dois.
 - O Application Gateway for Containers com WAF é o maior item: ~54 % do total; só a associação
   (US$0,216/h) é ~42 %. O WAF custa US$0,124/h a mais que o AGC sem WAF. Os nós são ~31 %.
@@ -94,29 +98,41 @@ lab precisa de 4 vCPUs da família, 6 durante um upgrade (surge de 1 nó) ou com
 
 ## Custo adicional do perfil full
 
-O perfil full precisa de mais memória que o perfil core. Para os valores de referência de 2026-10-16, o runbook usa dois nós `Standard_D2as_v5` (2 vCPU, 8 GiB), a US$0,086/h por nó, em vez de dois `Standard_D2als_v6` (2 vCPU, 4 GiB) a US$0,0804/h. O acréscimo é US$0,0112/h para o pool, calculado com preços pay-as-you-go de eastus2.
+O perfil full também exige um domínio registrado pelo operador. O Terraform cria uma zona Azure DNS
+pública e um CNAME; a zona e as consultas são cobradas à parte, conforme a
+[tabela oficial do Azure DNS](https://azure.microsoft.com/en-us/pricing/details/dns/). O preço do
+registro do domínio e da renovação no registrador não está incluído. O certificado Let's Encrypt não
+exige compra, mas o desafio HTTP-01 depende de delegação pública e do AGC ligado. Consulte os preços
+da sua oferta antes da rodada; o total abaixo não inclui DNS nem domínio.
+
+O perfil full precisa de mais memória que o perfil core. Para os valores de referência de 2026-10-16, o runbook usa dois nós `Standard_D2as_v5` (2 vCPU, 8 GiB), a US$0,086/h por nó, em vez de dois `Standard_D2als_v6` (2 vCPU, 4 GiB) a US$0,0804/h. O acréscimo é US$0,0112/h para o pool, calculado com preços pay-as-you-go de eastus2. O perfil full também usa ACR Standard para habilitar ABAC por repositório.
 
 | Cenário | US$/hora | US$/dia | US$/mês (730 h) |
 |---|---:|---:|---:|
-| Perfil full com WAF | ~0,524 | ~12,58 | ~382,67 |
-| Perfil full sem WAF | ~0,400 | ~9,60 | ~292,15 |
-| Rodada de 3 horas com WAF | — | — | ~1,57 por rodada |
-| Rodada de 3 horas sem WAF | — | — | ~1,20 por rodada |
+| Perfil full com WAF, sem discos de dados | ~0,545 | ~13,08 | ~397,88 |
+| Perfil full sem WAF, sem discos de dados | ~0,421 | ~10,10 | ~307,35 |
+| PVCs `managed-csi` do full: 3 × E3 (16 GiB), 2 × E1 (4 GiB) | ~0,0058 | ~0,14 | ~4,20 |
+| **Perfil full com WAF e PVCs** | **~0,551** | **~13,22** | **~402,08** |
+| **Perfil full sem WAF e PVCs** | **~0,427** | **~10,24** | **~311,55** |
+| Rodada de 3 horas com WAF e PVCs | — | — | ~1,65 por rodada |
+| Rodada de 3 horas sem WAF e PVCs | — | — | ~1,28 por rodada |
 
-Os valores somam US$0,0112/h ao total do perfil core e mantêm as demais hipóteses da tabela anterior. Não incluem armazenamento e operações do Blob, tráfego, logs opcionais nem eventual cobrança do medidor `FreeTierInfrastructureCost`. Use `LAB_NODE_VM_SIZE=Standard_D2as_v5` e `LAB_NODE_COUNT=2` antes do plan/apply, e mantenha os mesmos valores até o destroy. O full usa Grafana e Prometheus dentro do cluster; não cria Azure Managed Grafana nem Azure Managed Prometheus. São preços estimados, não custos medidos; nenhuma rodada cloud foi executada.
+Os valores de compute somam US$0,0112/h ao total do perfil core e mantêm as demais hipóteses da tabela anterior. Os cinco PVCs pedem 36 GiB e provisionam aproximadamente 56 GiB em Standard SSD LRS: Prometheus 12 GiB, Loki 10 GiB e Tempo 10 GiB usam E3 (16 GiB); Alertmanager e Grafana, com 2 GiB cada, usam E1 (4 GiB). A estimativa de US$4,20/mês usa os preços de base de `eastus2`, não inclui transações de disco nem armazenamento e operações do Blob, tráfego, logs opcionais ou eventual cobrança do medidor `FreeTierInfrastructureCost`. Discos Azure são cobrados por hora e pelo tier que acomoda a capacidade solicitada ([Managed Disks](https://azure.microsoft.com/pricing/details/managed-disks/)); AKS `managed-csi` usa discos gerenciados. O `platform/uninstall.sh` apaga os PVCs de monitoramento e os discos correspondentes no teardown. Use `LAB_NODE_VM_SIZE=Standard_D2as_v5` e `LAB_NODE_COUNT=2` antes do plan/apply, e mantenha os mesmos valores até o destroy. O full usa Grafana e Prometheus dentro do cluster; não cria Azure Managed Grafana nem Azure Managed Prometheus. São preços estimados, não custos medidos; nenhuma rodada cloud foi executada.
 
 ### Requests renderizados e capacidade de referência
 
-O `helm-template-full` renderiza os 15 pacotes de charts fixados e chama `scripts/platform-sizing.sh 2`.
+O `helm-template-full` renderiza os 16 pacotes de charts fixados e chama `scripts/platform-sizing.sh 2`.
 Em 2026-10-16, os manifests somaram os requests da tabela abaixo. DaemonSets contam uma instância
 por nó; Prometheus e Alertmanager contam seus `spec.resources`. O check compara esses números com
 esta linha para que a estimativa não se separe dos charts.
 
 | Perfil | Requests dos charts | Nós de referência | Capacidade nominal antes de reservar recursos para AKS e para o app |
 |---|---:|---|---|
-| full | 795 mCPU / 3104 MiB | 2 × `Standard_D2as_v5` (2 vCPU, 8 GiB cada) | 4000 mCPU / 16384 MiB; os charts usam cerca de 20% da CPU e 19% da memória nominal |
+| full | 1315 mCPU / 3680 MiB | 2 × `Standard_D2as_v5` (2 vCPU, 8 GiB cada) | 4000 mCPU / 16384 MiB; os charts usam cerca de 33% da CPU e 22% da memória nominal |
 
-Os valores são requests dos charts, não uso medido nem capacidade `allocatable`. Eles não incluem
+Os valores são requests de CPU e memória dos charts, não uso medido nem capacidade `allocatable`. Os
+charts também pedem armazenamento: Prometheus 12 GiB, Alertmanager 2 GiB, Grafana 2 GiB, Loki 10 GiB
+e Tempo 10 GiB, todos em `managed-csi`; os discos gerenciados são cobrados enquanto existirem. Eles não incluem
 pods de sistema do AKS, a aplicação, nem o Azure Monitor Agent. O tamanho `D2as_v5` fornece margem
 de memória para esses componentes; o render não prova que o cluster sobe ou que a margem é
 suficiente em runtime. A escolha continua `não executado em nuvem (v2)`.

@@ -8,17 +8,29 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
-- Azure profile `full` with 15 pinned charts, ambient Istio, observability, Argo CD GitOps, Gatekeeper,
-  Trivy, Velero on Azure Blob through Workload ID with 35-day retention, and Chaos Mesh. The platform
-  workflow keeps `core` as its default.
+- Optional lab-owned Azure DNS zone and app CNAME, with validated fork inputs and mocked Terraform
+  tests. The full platform profile bootstraps a public Let's Encrypt certificate over AGC Gateway
+  API HTTP-01 before enabling the app's HTTPS listener; core remains the low-cost HTTP exercise.
+
+- Azure profile `full` with 16 pinned charts, ambient Istio with an L7 waypoint, app SLO metrics and
+  dashboard, Argo CD GitOps, Gatekeeper, Kyverno image-signature admission, Trivy scans of private
+  ACR repositories, Velero on Azure Blob through Workload ID with 35-day retention, and Chaos Mesh.
+  The platform workflow keeps `core` as its default.
 - Terraform Velero module with keyless StorageV2, a private Blob container, container-scoped data
   role and federated ServiceAccount identity. `LAB_NODE_VM_SIZE` and `LAB_NODE_COUNT` let cloud
   workflows size the cluster for the full profile while preserving core defaults.
+- ACR Standard with repository-scoped ABAC: kubelet, Trivy and Kyverno read only the application
+  repositories, while the deploy identities can write only those repositories.
 
 ### Changed
 
-- Cloud contract version 3 adds ambient and Gatekeeper namespace labels, GitOps branch and backup
-  semantics. The 15 App Configuration keys and the separate local contract v2 are unchanged.
+- Cloud contract version 4 publishes the app hostname and ACME contact as two additional App
+  Configuration keys. The coordinated dx02v2 full overlay consumes the resulting TLS Secret.
+
+- Cloud contract version 3 previously added ambient and Gatekeeper namespace labels, GitOps and
+  backup semantics. The separate local contract remains version 2.
+- The full profile's image promotion, SLO, storage, waypoint and public TLS requirements are
+  documented in `docs/CONTRATO.md`.
 
 ### Security
 
@@ -196,9 +208,10 @@ All notable changes to this project are documented here. The format follows
     policy with DRS 2.1 + Bot Manager 1.1 and its SecurityPolicy, `enable_waf` on by default),
     `appconfig` (contract store, Free tier) and `role-ids`; every role assignment of the lab in one
     file; the 15 contract keys.
-  - `app_deployer_principal_ids` get the same Azure roles as `dx02v2-gha-deploy` (AcrPush, Azure
-    Kubernetes Service Cluster User Role, App Configuration Data Reader) besides the RoleBinding
-    subject, with tests for a list of deployers and for an empty list.
+  - `app_deployer_principal_ids` get the same Azure roles as `dx02v2-gha-deploy` (repository-scoped
+    Container Registry Repository Writer, Azure Kubernetes Service Cluster User Role, App
+    Configuration Data Reader) besides the RoleBinding subject, with tests for a list of deployers
+    and for an empty list.
   - System node pool default `Standard_D2als_v6`; `node_vm_size` rejects B-series sizes, which AKS
     does not support in system node pools.
   - Multi-platform provider lock files (linux_amd64, linux_arm64, darwin_arm64, windows_amd64).

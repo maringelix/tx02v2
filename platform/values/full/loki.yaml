@@ -1,0 +1,14 @@
+# Managed-csi persistence for the Azure cloud profile; retain logs for seven days and remove the
+# persistent volume with the lab teardown.
+loki:
+  limits_config:
+    retention_period: 168h
+
+singleBinary:
+  persistence:
+    enabled: true
+    enableStatefulSetAutoDeletePVC: false
+    size: 10Gi
+    storageClass: managed-csi
+  extraVolumes: []
+  extraVolumeMounts: []

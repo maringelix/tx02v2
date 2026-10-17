@@ -39,14 +39,15 @@ ESO_CHART_REPO="https://charts.external-secrets.io"
 # Placeholder inputs used to render platform/manifests (never real identifiers).
 RENDER_VAULT_URI="https://tx02v2-lab-00000000.vault.azure.net/"
 RENDER_DEPLOYERS=(00000000-0000-0000-0000-000000000000 11111111-1111-1111-1111-111111111111)
+RENDER_AGC_SUBNET_CIDR="10.20.4.0/24"
 
-# Contract v2 (docs/CONTRATO.md): the App Configuration keys under tx02v2/lab/ that dx02v2 reads.
+# Contract v4 (docs/CONTRATO.md): the App Configuration keys under tx02v2/lab/ that dx02v2 reads.
 CONTRACT_KEYS=(
   location resource-group cluster-name vnet-cidr agc-subnet-cidr postgres-subnet-cidr acr/login-server
   keyvault/uri db/secret-name app/admin-token-secret-name eso/cluster-secret-store agc/id agc/frontend-name
-  waf/policy-id deploy/principal-id
+  dns/hostname dns/acme-email waf/policy-id deploy/principal-id
 )
-# Contract v2 (unchanged since v1): rules of the Role dx02v2-deployer, one "apiGroup|resource|verbs" per resource
+# Contract v3: rules of the Role dx02v2-deployer, one "apiGroup|resource|verbs" per resource
 # (verbs sorted). The ALB Controller 1.12.2 CRDs use singular-looking plurals on purpose.
 ROLE_CRUD="create,delete,get,list,patch,update,watch"
 ROLE_READ="get,list,watch"
@@ -55,6 +56,7 @@ CONTRACT_ROLE_RULES=(
   "|services|$ROLE_CRUD" "|configmaps|$ROLE_CRUD" "|serviceaccounts|$ROLE_CRUD"
   "|pods|$ROLE_READ" "|pods/log|$ROLE_READ" "|events|$ROLE_READ" "|endpoints|$ROLE_READ" "|secrets|$ROLE_READ"
   "networking.k8s.io|networkpolicies|$ROLE_CRUD"
+  "networking.istio.io|destinationrules|$ROLE_CRUD" "security.istio.io|authorizationpolicies|$ROLE_CRUD"
   "gateway.networking.k8s.io|gateways|$ROLE_CRUD" "gateway.networking.k8s.io|httproutes|$ROLE_CRUD"
   "alb.networking.azure.io|healthcheckpolicy|$ROLE_CRUD" "alb.networking.azure.io|webapplicationfirewallpolicy|$ROLE_CRUD"
   "autoscaling|horizontalpodautoscalers|$ROLE_CRUD" "policy|poddisruptionbudgets|$ROLE_CRUD"
@@ -67,13 +69,13 @@ CONTRACT_ROLE_RULES=(
 # Administrator, Contributor and Role Based Access Control Administrator appear only in tests
 # (to prove the ABAC condition excludes them) and in terraform/bootstrap by name.
 declare -A BUILTIN_ROLE_IDS=(
-  [7f951dda-4ed3-4680-a7ca-43fe172d538d]="AcrPull"
-  [8311e382-0749-4cb8-b61a-304f252e45ec]="AcrPush"
   [516239f1-63e1-4d78-a4de-a74fb236a071]="App Configuration Data Reader"
   [5ae67dd6-50cb-40e7-96ff-dc2bfa4b606b]="App Configuration Data Owner"
   [fbc52c3f-28ad-4303-a892-8a056630b8f1]="AppGw for Containers Configuration Manager"
   [4abbcc35-e782-43d8-92c5-2d3f1bd2253f]="Azure Kubernetes Service Cluster User Role"
   [b1ff04bb-8a4e-4dc4-8eb5-8693973ce19b]="Azure Kubernetes Service RBAC Cluster Admin"
+  [b93aa761-3e63-49ed-ac28-beffa264f7ac]="Container Registry Repository Reader"
+  [2a1e307c-b015-4ebd-883e-5b7698a07328]="Container Registry Repository Writer"
   [b24988ac-6180-42a0-ab88-20f7382dd24c]="Contributor"
   [4633458b-17de-408a-b874-0445c86b69e6]="Key Vault Secrets User"
   [b86a8fe4-44ce-4948-aee5-eccb2c155cd7]="Key Vault Secrets Officer"
@@ -107,9 +109,13 @@ REQUIRED_FILES=(
   platform/values/alb-controller.yaml platform/values/external-secrets.yaml
   platform/full/charts.txt platform/values/full/istiod.yaml platform/values/full/otel-collector.yaml
   platform/values/full/kube-prometheus-stack.yaml platform/values/full/kube-prometheus-stack-slack.yaml
-  platform/values/full/gatekeeper.yaml platform/values/full/trivy-operator.yaml platform/values/full/velero.yaml
+  platform/values/full/kube-prometheus-stack-storage.yaml platform/values/full/loki.yaml platform/values/full/tempo.yaml
+  platform/values/full/gatekeeper.yaml platform/values/full/kyverno.yaml platform/values/full/trivy-operator.yaml platform/values/full/velero.yaml
   platform/manifests/full/argocd-platform.yaml platform/manifests/full/namespaces.yaml
   platform/manifests/full/rbac-argocd-deployer.yaml platform/manifests/full/tracing.yaml
+  platform/manifests/full/waypoint.yaml platform/manifests/full/app-security.yaml
+  platform/manifests/full/app-monitoring.yaml platform/manifests/full/image-verification.yaml
+  platform/templates/edge-acme.yaml platform/render-edge-acme.sh
   platform/gitops/Chart.yaml platform/gitops/values.yaml
   platform/gitops/templates/application.yaml platform/gitops/templates/appproject.yaml
   platform/full/policies/constraints/allowed-repos.yaml platform/full/policies/tests/pod-acr.yaml
@@ -250,7 +256,7 @@ render_platform() {
 render_platform_full() {
   local IFS=,
   bash platform/render-manifests.sh "$RENDER_VAULT_URI" "${RENDER_DEPLOYERS[*]}" \
-    --full maringelix --acr-login-server tx02v2labb602d594.azurecr.io
+    --full maringelix --acr-login-server tx02v2labb602d594.azurecr.io --agc-subnet-cidr "$RENDER_AGC_SUBNET_CIDR"
 }
 
 # kubectl_local FILE GO_TEMPLATE -> evaluates the template on every object of FILE without any
@@ -982,7 +988,7 @@ check_shellcheck() {
 }
 
 check_kubeconform() {
-  local rendered="$HARNESS_WORK_DIR/platform-manifests.yaml" full="$HARNESS_WORK_DIR/platform-full-manifests.yaml"
+  local rendered="$HARNESS_WORK_DIR/platform-manifests.yaml" full="$HARNESS_WORK_DIR/platform-full-manifests.yaml" edge="$HARNESS_WORK_DIR/edge-acme.yaml"
   need kubeconform
   mkdir -p "$HARNESS_WORK_DIR/kubeconform-cache"
   render_platform >"$rendered"
@@ -998,10 +1004,50 @@ check_kubeconform() {
     -cache "$HARNESS_WORK_DIR/kubeconform-cache" \
     -schema-location "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/$K8S_SCHEMA_REF/{{.NormalizedKubernetesVersion}}-standalone{{.StrictSuffix}}/{{.ResourceKind}}{{.KindSuffix}}.json" \
     -schema-location "https://raw.githubusercontent.com/datreeio/CRDs-catalog/$CRD_SCHEMA_REF/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json" \
-    "$full"
+    "$full" || return $?
+  bash platform/render-edge-acme.sh lab.example.com you@example.com \
+    /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ServiceNetworking/trafficControllers/tx02v2-lab-agc \
+    tx02v2-lab-frontend >"$edge"
+  kubeconform -strict -summary -output text -ignore-missing-schemas \
+    -kubernetes-version "$K8S_SCHEMA_KUBERNETES_VERSION" \
+    -cache "$HARNESS_WORK_DIR/kubeconform-cache" \
+    -schema-location "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/$K8S_SCHEMA_REF/{{.NormalizedKubernetesVersion}}-standalone{{.StrictSuffix}}/{{.ResourceKind}}{{.KindSuffix}}.json" \
+    -schema-location "https://raw.githubusercontent.com/datreeio/CRDs-catalog/$CRD_SCHEMA_REF/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json" \
+    "$edge"
 }
 
-# The platform layer of contract v2, parsed from the rendered manifests (kubectl, no cluster):
+check_edge_acme() {
+  local file="$HARNESS_WORK_DIR/edge-acme.yaml" id
+  need kubectl
+  id=/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ServiceNetworking/trafficControllers/tx02v2-lab-agc
+  bash platform/render-edge-acme.sh lab.example.com you@example.com "$id" tx02v2-lab-frontend >"$file" || return $?
+  [[ "$(kubectl_local "$file" '{{.kind}}/{{.metadata.name}}{{"\n"}}')" == $'Gateway/dx02v2\nClusterIssuer/tx02v2-letsencrypt-prod\nCertificate/dx02v2-tls' ]] || {
+    echo "the ACME bootstrap must render exactly the lab Gateway, ClusterIssuer and Certificate"
+    return 1
+  }
+  for wanted in \
+    'hostname: lab.example.com' \
+    'alb.networking.azure.io/alb-id: /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ServiceNetworking/trafficControllers/tx02v2-lab-agc' \
+    'server: https://acme-v02.api.letsencrypt.org/directory' \
+    'email: you@example.com' \
+    'gatewayHTTPRoute:' \
+    'serviceType: ClusterIP' \
+    'secretName: dx02v2-tls'; do
+    grep -qF "$wanted" "$file" || { echo "ACME bootstrap missing $wanted"; return 1; }
+  done
+  for bad in 'lab..example.com|you@example.com' 'lab.example.com|not-an-email'; do
+    if bash platform/render-edge-acme.sh "${bad%%|*}" "${bad#*|}" "$id" tx02v2-lab-frontend >/dev/null 2>&1; then
+      echo "the ACME renderer accepted invalid configuration: $bad"
+      return 1
+    fi
+  done
+  if bash platform/render-edge-acme.sh lab.example.com you@example.com "$id" another-frontend >/dev/null 2>&1; then
+    echo "the ACME renderer accepted a frontend outside the lab"
+    return 1
+  fi
+}
+
+# The platform layer of contract v3, parsed from the rendered manifests (kubectl, no cluster):
 # exact objects, Pod Security labels, Role rules, RoleBinding subjects, ClusterSecretStore;
 # plus the Helm values and the pins of platform/versions.env.
 # shellcheck disable=SC2016 # Go templates of kubectl, not shell expansions
@@ -1027,8 +1073,10 @@ check_contract_platform() {
         printf 'namespace %s must carry Pod Security restricted, Istio ambient and Gatekeeper enforcement labels; got:\n%s\n' "$key" "$got"
         rc=1
       fi
-    elif [[ "$got" != $'pod-security.kubernetes.io/enforce=restricted\npod-security.kubernetes.io/enforce-version=latest' ]]; then
-      printf 'namespace %s must carry exactly the Pod Security labels enforce=restricted, enforce-version=latest; got:\n%s\n' "$key" "$got"
+    elif [[ "$got" != $'istio.io/dataplane-mode=ambient\npod-security.kubernetes.io/enforce=restricted\npod-security.kubernetes.io/enforce-version=latest' ]]; then
+      # Ambient: the AuthorizationPolicies of the app trust the Collector by mesh identity, and STRICT
+      # mTLS refuses its plaintext synthetic probes.
+      printf 'namespace %s must carry exactly the Pod Security labels enforce=restricted, enforce-version=latest and istio.io/dataplane-mode=ambient; got:\n%s\n' "$key" "$got"
       rc=1
     fi
   done
@@ -1037,7 +1085,7 @@ check_contract_platform() {
       for (i = 1; i <= n; i++) s = s (i > 1 ? "," : "") v[i]; print $1 "|" $2 "|" s; next } { print }' | sort)"
   want="$(printf '%s\n' "${CONTRACT_ROLE_RULES[@]}" | sort)"
   [[ "$got" == "$want" ]] || {
-    echo "Role dx02v2-deployer differs from contract v2 (lines: apiGroup|resource|verbs):"
+    echo "Role dx02v2-deployer differs from contract v3 (lines: apiGroup|resource|verbs):"
     diff <(printf '%s\n' "$want") <(printf '%s\n' "$got") | sed -n 's/^</  contract:/p; s/^>/  rendered:/p'
     rc=1
   }
@@ -1050,6 +1098,14 @@ check_contract_platform() {
     printf 'RoleBinding dx02v2-deployers must bind Role dx02v2-deployer to one User per object ID, in order:\n%s\ngot:\n%s\n' "$want" "$got"
     rc=1
   }
+  got="$(kubectl_local platform/local/manifests/argocd-project-dx02v2.yaml \
+    '{{if eq .kind "AppProject"}}{{range .spec.namespaceResourceWhitelist}}{{.group}}|{{.kind}}{{"\n"}}{{end}}{{end}}')"
+  for kind in 'networking.istio.io|DestinationRule' 'security.istio.io|AuthorizationPolicy'; do
+    grep -qFx "$kind" <<<"$got" || {
+      printf 'local AppProject dx02v2 must allow the full-profile resource %s; got:\n%s\n' "$kind" "$got"
+      rc=1
+    }
+  done
   # Repeated object IDs (deploy/principal-id also in app_deployer_principal_ids) render once.
   got="$(bash platform/render-manifests.sh "$RENDER_VAULT_URI" "${RENDER_DEPLOYERS[0]},${RENDER_DEPLOYERS[1]},${RENDER_DEPLOYERS[0]}" | grep -c '^  - kind: User$')"
   ((got == ${#RENDER_DEPLOYERS[@]})) || {
@@ -1137,7 +1193,7 @@ check_contract_platform() {
     rc=1
   }
   grep -qE '^  azure\.workload\.identity/use: "true"$' platform/values/otel-collector.yaml || {
-    echo "OpenTelemetry Collector: the pods must carry the label azure.workload.identity/use: \"true\" (contract v2)"
+    echo "OpenTelemetry Collector: the pods must carry the label azure.workload.identity/use: \"true\" (contract v3)"
     rc=1
   }
   if grep -vE '^[[:space:]]*#' platform/values/otel-collector.yaml | grep -qE 'client-id|InstrumentationKey='; then
@@ -1162,8 +1218,98 @@ check_contract_platform() {
   return "$rc"
 }
 
+# Full profile admission binds the Azure workload identity to the same fork-specific deploy workflow
+# that signs the promotion statement; the AGC CIDR remains the only plaintext edge exception.
+check_image_admission_policy() {
+  local rc=0 file=platform/manifests/full/image-verification.yaml rendered="$HARNESS_WORK_DIR/image-verification.yaml"
+  for expected in \
+    'kind: ImageValidatingPolicy' \
+    'failurePolicy: Fail' \
+    'validationActions:' \
+    '    - Deny' \
+    '*.azurecr.io/dx02v2/api@sha256:*' \
+    '*.azurecr.io/dx02v2/web@sha256:*' \
+    '      - azure' \
+    'deploy-azure.yml@refs/heads/main' \
+    'https://token.actions.githubusercontent.com' \
+    'https://github.com/maringelix/tx00v2/attestations/promoted-image/v1'; do
+    grep -qF "$expected" "$file" || {
+      echo "$file: missing fail-closed Azure promotion verification contract '$expected'"
+      rc=1
+    }
+  done
+  render_platform_full >"$rendered" || return 1
+  grep -qF 'https://github.com/maringelix/dx02v2/.github/workflows/deploy-azure.yml@refs/heads/main' "$rendered" || {
+    echo "render-manifests.sh did not bind the admission policy to the fork owner"
+    rc=1
+  }
+  if grep -qE '__[A-Z][A-Z0-9_]*__' "$rendered"; then
+    echo "the rendered full manifest still contains a template placeholder"
+    rc=1
+  fi
+  if ! grep -qF 'ipBlocks:' "$rendered" || ! grep -qF "$RENDER_AGC_SUBNET_CIDR" "$rendered"; then
+    echo "the rendered app security policy must restrict its edge exception to the contract AGC subnet"
+    rc=1
+  fi
+  # portLevelMtls is valid only with a workload selector: the CRD refuses it on a namespace-wide
+  # PeerAuthentication, which the JSON schema of kubeconform cannot see.
+  got="$(kubectl_local "$rendered" '{{if eq .kind "PeerAuthentication"}}{{.metadata.name}}|{{if .spec.portLevelMtls}}ports{{end}}|{{if .spec.selector}}selector{{end}}{{"\n"}}{{end}}')" || return 1
+  if grep -qE '\|ports\|$' <<<"$got"; then
+    printf 'a PeerAuthentication with portLevelMtls needs a workload selector (the CRD refuses it otherwise):\n%s\n' "$(grep -E '\|ports\|$' <<<"$got")"
+    rc=1
+  fi
+  grep -qxF 'default||' <<<"$got" || {
+    echo "the namespace-wide PeerAuthentication default (STRICT, no selector, no port exception) is missing"
+    rc=1
+  }
+  return "$rc"
+}
+
+# Admission must be installed before Argo CD can start the application, and cloud-full upgrades must
+# create its waypoint, app policies, observability and Gatekeeper constraints before GitOps syncs.
+check_full_install_order() {
+  local body line last=0 n rc=0
+  local -a expected=(
+    'apply_full full/namespaces.yaml'
+    'install_istio'
+    'install_waypoint'
+    'apply_full full/app-security.yaml'
+    'install_observability'
+    'apply_full full/app-monitoring.yaml'
+    'install_policies'
+    'install_image_admission'
+    'install_gitops'
+    'install_chart trivy-operator'
+    'install_backup'
+    'install_chart chaos-mesh'
+  )
+  body="$(sed -n '/^install_full() {/,/^}/p' platform/install.sh)"
+  for line in "${expected[@]}"; do
+    n="$(grep -nF "$line" <<<"$body" | head -n 1 | cut -d: -f1)"
+    if [[ -z "$n" || "$n" -le "$last" ]]; then
+      echo "platform/install.sh: expected full-profile step '$line' after line $last"
+      rc=1
+    else
+      last=$n
+    fi
+  done
+  grep -qF 'delete_all imagevalidatingpolicies.policies.kyverno.io' platform/uninstall.sh || {
+    echo "platform/uninstall.sh must remove the fail-closed image policy before uninstalling Kyverno"
+    rc=1
+  }
+  grep -qF 'remove_full_application_resources' platform/uninstall.sh || {
+    echo "platform/uninstall.sh must remove the full-profile app policies and monitoring resources before uninstalling their CRDs"
+    rc=1
+  }
+  grep -qF 'delete_full_persistent_volume_claims' platform/uninstall.sh || {
+    echo "platform/uninstall.sh must remove observability PVCs before terraform destroy"
+    rc=1
+  }
+  return "$rc"
+}
+
 # The contract keys the lab writes to App Configuration (terraform/envs/lab/contract.tf) are
-# exactly the 15 keys of contract v2 (CONTRACT_KEYS, the list dx02v2 reads).
+# exactly the 17 keys of contract v4 (CONTRACT_KEYS, the list dx02v2 reads).
 check_contract_appconfig() {
   local rc=0 got want key
   got="$(awk '/^  contract_keys = \{/ { inside = 1; next } inside && /^  \}/ { inside = 0 } inside && /^    "[^"]+"[[:space:]]*=/ { k = $1; gsub(/"/, "", k); print k }' terraform/envs/lab/contract.tf | sort)"
@@ -1171,7 +1317,7 @@ check_contract_appconfig() {
   if [[ "$got" == "$want" ]]; then
     echo "terraform/envs/lab/contract.tf: the ${#CONTRACT_KEYS[@]} contract keys"
   else
-    echo "terraform/envs/lab/contract.tf must define exactly the ${#CONTRACT_KEYS[@]} keys of contract v2:"
+    echo "terraform/envs/lab/contract.tf must define exactly the ${#CONTRACT_KEYS[@]} keys of contract v4:"
     diff <(printf '%s\n' "$want") <(printf '%s\n' "$got") | sed -n 's/^</  missing:/p; s/^>/  unexpected:/p'
     rc=1
   fi
@@ -1311,6 +1457,7 @@ check_helm_template() {
 check_helm_template_full() {
   local rc=0 entry repo_key version_key sha_key chart release ns value_list tgz f content values_file rendered images bad svc count=0 sizing sizing_cpu sizing_memory docs_cpu docs_memory
   local test_storage_uri="https://tx02v2labb602d594velero.blob.core.windows.net"
+  local test_client_id="00000000-0000-0000-0000-000000000000"
   local -a files=() args=() entries=()
   need helm
   load_local_versions
@@ -1336,6 +1483,8 @@ check_helm_template_full() {
       }
       content="$(<"platform/$f")"
       content="${content//__VELERO_CLIENT_ID__/00000000-0000-0000-0000-000000000000}"
+      content="${content//__TRIVY_CLIENT_ID__/$test_client_id}"
+      content="${content//__KYVERNO_CLIENT_ID__/$test_client_id}"
       content="${content//__VELERO_STORAGE_ACCOUNT_URI__/$test_storage_uri}"
       content="${content//__S3_BUCKET__/tx02v2-lab-velero}"
       content="${content//__S3_ENDPOINT__/$test_storage_uri}"
@@ -1393,11 +1542,29 @@ check_helm_template_full() {
       echo "$chart: unresolved placeholder in the rendered chart"
       rc=1
     fi
+    if [[ "$chart" == trivy-operator ]]; then
+      for expected in 'azure.workload.identity/client-id: 00000000-0000-0000-0000-000000000000' \
+        'scanJob.podTemplateLabels: "azure.workload.identity/use=true"'; do
+        grep -qF "$expected" "$rendered" || {
+          echo "trivy-operator: private ACR scans need the Azure Workload ID service account and scan-job label ($expected)"
+          rc=1
+        }
+      done
+    fi
+    if [[ "$chart" == kyverno ]]; then
+      for expected in 'azure.workload.identity/client-id: 00000000-0000-0000-0000-000000000000' \
+        'azure.workload.identity/use: "true"'; do
+        grep -qF "$expected" "$rendered" || {
+          echo "kyverno: image admission needs the Azure Workload ID service account and pod label ($expected)"
+          rc=1
+        }
+      done
+    fi
     count=$((count + 1))
     echo "$chart ${LV[$version_key]}: $(grep -c '^kind:' "$rendered" || :) objects"
   done
-  [[ "$count" == 15 ]] || {
-    echo "platform/full/charts.txt rendered $count charts; expected 15"
+  [[ "$count" == 16 ]] || {
+    echo "platform/full/charts.txt rendered $count charts; expected 16"
     rc=1
   }
   sizing="$(scripts/platform-sizing.sh 2 "$out")"
@@ -1424,7 +1591,8 @@ check_helm_template_full() {
     echo "platform/gitops: unresolved placeholder in the rendered chart"
     rc=1
   fi
-  for key in 'kind: Gateway' 'kind: HTTPRoute' 'kind: HealthCheckPolicy' 'kind: WebApplicationFirewallPolicy'; do
+  for key in 'kind: Gateway' 'kind: HTTPRoute' 'kind: HealthCheckPolicy' 'kind: WebApplicationFirewallPolicy' \
+    'group: networking.istio.io' 'kind: DestinationRule' 'group: security.istio.io' 'kind: AuthorizationPolicy'; do
     grep -qF "$key" "$out/platform-gitops.yaml" || {
       echo "platform/gitops AppProject must allow the app's Azure resource '$key'"
       rc=1
@@ -1485,8 +1653,8 @@ check_fork_references() {
   local rc=0 entry repo_key version_key sha_key chart release ns value_list f
   local -a entries=() files=()
   mapfile -t entries < <(chart_table)
-  [[ "${#entries[@]}" == 15 ]] || {
-    echo "platform/full/charts.txt must list exactly 15 pinned charts"
+  [[ "${#entries[@]}" == 16 ]] || {
+    echo "platform/full/charts.txt must list exactly 16 pinned charts"
     rc=1
   }
   for entry in "${entries[@]}"; do
@@ -1727,6 +1895,8 @@ register_checks() {
   register static leftovers-flow check_leftovers_flow
   register static trivyignore-policy check_trivyignore_policy
   register static contract-platform check_contract_platform
+  register static image-admission-policy check_image_admission_policy
+  register static full-install-order check_full_install_order
   register static contract-appconfig check_contract_appconfig
   register static terraform-fmt check_terraform_fmt
   register static terraform-lockfiles check_terraform_lockfiles
@@ -1741,6 +1911,7 @@ register_checks() {
   register static actionlint check_actionlint
   register static shellcheck check_shellcheck
   register static kubeconform check_kubeconform
+  register static edge-acme check_edge_acme
   register static helm-template check_helm_template
   register static helm-template-full check_helm_template_full
   register static platform-sizing check_platform_sizing

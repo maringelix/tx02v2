@@ -1,0 +1,56 @@
+# The full-profile TLS bootstrap is staged before the app is synced. An HTTP-only Gateway lets
+# cert-manager answer the HTTP-01 challenge on port 80; dx02v2 then adds the HTTPS listener and
+# redirect to this same Gateway after dx02v2-tls is Ready. All placeholders are validated by
+# platform/install.sh against the tx02v2/lab/* contract before substitution.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: dx02v2
+  namespace: dx02v2
+  annotations:
+    alb.networking.azure.io/alb-id: __AGC_ID__
+spec:
+  gatewayClassName: azure-alb-external
+  addresses:
+    - type: alb.networking.azure.io/alb-frontend
+      value: __AGC_FRONTEND__
+  listeners:
+    - name: http
+      hostname: __DNS_HOSTNAME__
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: tx02v2-letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: __ACME_EMAIL__
+    privateKeySecretRef:
+      name: tx02v2-letsencrypt-account
+    solvers:
+      - http01:
+          gatewayHTTPRoute:
+            serviceType: ClusterIP
+            parentRefs:
+              - name: dx02v2
+                namespace: dx02v2
+                kind: Gateway
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: dx02v2-tls
+  namespace: dx02v2
+spec:
+  secretName: dx02v2-tls
+  issuerRef:
+    name: tx02v2-letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - __DNS_HOSTNAME__

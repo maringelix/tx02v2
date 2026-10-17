@@ -19,7 +19,7 @@ output "oidc_issuer_url" {
 }
 
 output "kubelet_object_id" {
-  description = "Object ID of the kubelet identity configured on the cluster (AcrPull on the registry)."
+  description = "Object ID of the kubelet identity configured on the cluster (repository-scoped ACR Reader)."
   value       = var.kubelet_identity.object_id
 }
 

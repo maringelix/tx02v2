@@ -93,6 +93,7 @@ uninstall_full_releases() {
   helm uninstall chaos-mesh --namespace chaos-mesh --ignore-not-found --wait=watcher --timeout 10m
   helm uninstall velero --namespace velero --ignore-not-found --wait=watcher --timeout 10m
   helm uninstall trivy-operator --namespace trivy-system --ignore-not-found --wait=watcher --timeout 10m
+  helm uninstall kyverno --namespace kyverno --ignore-not-found --wait=watcher --timeout 10m
   helm uninstall gatekeeper --namespace gatekeeper-system --ignore-not-found --wait=watcher --timeout 10m
   helm uninstall argo-cd --namespace argocd --ignore-not-found --wait=watcher --timeout 10m
   helm uninstall opentelemetry-collector --namespace observability --ignore-not-found --wait=watcher --timeout 10m
@@ -105,6 +106,56 @@ uninstall_full_releases() {
   helm uninstall istiod --namespace istio-system --ignore-not-found --wait=watcher --timeout 10m
   helm uninstall istio-base --namespace istio-system --ignore-not-found --wait=watcher --timeout 10m
   helm uninstall cert-manager --namespace cert-manager --ignore-not-found --wait=watcher --timeout 10m
+}
+
+remove_waypoint() {
+  local waypoint
+  if kubectl get crd gateways.gateway.networking.k8s.io >/dev/null 2>&1; then
+    kubectl delete gateway --namespace dx02v2 dx02v2-waypoint --ignore-not-found --wait=true --timeout=5m
+  fi
+  if kubectl get namespace dx02v2 >/dev/null 2>&1; then
+    waypoint="$(kubectl get namespace dx02v2 -o jsonpath='{.metadata.labels.istio\.io/use-waypoint}')"
+    if [[ "$waypoint" == dx02v2-waypoint ]]; then
+      kubectl label namespace dx02v2 istio.io/use-waypoint- >/dev/null
+    fi
+  fi
+}
+
+remove_full_application_resources() {
+  # These resources are applied directly by the full profile rather than owned by a Helm release.
+  # Remove them while their CRDs still exist so a later core-profile install has no stale policies,
+  # SLO rules, or dashboard from the full profile.
+  if crd_exists peerauthentications.security.istio.io; then
+    kubectl delete peerauthentications.security.istio.io default agc-edge-web agc-edge-api agc-edge-acme-solver \
+      --namespace dx02v2 --ignore-not-found --wait=true --timeout=5m
+  fi
+  if crd_exists authorizationpolicies.security.istio.io; then
+    kubectl delete authorizationpolicies.security.istio.io api web-agc-edge api-require-waypoint \
+      --namespace dx02v2 --ignore-not-found --wait=true --timeout=5m
+  fi
+  if crd_exists servicemonitors.monitoring.coreos.com; then
+    kubectl delete servicemonitors.monitoring.coreos.com dx02v2-api --namespace monitoring \
+      --ignore-not-found --wait=true --timeout=5m
+  fi
+  if crd_exists prometheusrules.monitoring.coreos.com; then
+    kubectl delete prometheusrules.monitoring.coreos.com dx02v2-slo --namespace monitoring \
+      --ignore-not-found --wait=true --timeout=5m
+  fi
+  kubectl delete configmap dx02v2-api-dashboard --namespace monitoring \
+    --ignore-not-found --wait=true --timeout=5m
+}
+
+delete_full_persistent_volume_claims() {
+  local namespace left
+  namespace="$(kubectl get namespace monitoring --ignore-not-found --output name)" ||
+    die "cannot check the monitoring namespace before deleting PVCs"
+  [[ -n "$namespace" ]] || return 0
+  left="$(kubectl get pvc --namespace monitoring --output name)" || die "cannot list monitoring PVCs"
+  [[ -z "$left" ]] && return 0
+  log "deleting monitoring PVCs (AKS managed-csi disks)"
+  kubectl delete pvc --namespace monitoring --all --wait=true --timeout=10m
+  left="$(kubectl get pvc --namespace monitoring --output name)" || die "cannot list monitoring PVCs after deletion"
+  [[ -z "$left" ]] || die "monitoring PVCs remain after uninstall:"$'\n'"$left"
 }
 
 # controller_agcs NODE_RG -> Application Gateway for Containers resources the controller created
@@ -155,6 +206,20 @@ main() {
 
   stop_gitops
 
+  # The TLS material belongs to this lab, including the ACME account key. Remove it while
+  # cert-manager is still running, then remove the routes and its release below.
+  if crd_exists certificates.cert-manager.io; then
+    kubectl delete certificate dx02v2-tls --namespace dx02v2 --ignore-not-found --wait=true --timeout=5m
+  fi
+  if crd_exists clusterissuers.cert-manager.io; then
+    kubectl delete clusterissuer tx02v2-letsencrypt-prod --ignore-not-found --wait=true --timeout=5m
+  fi
+  kubectl delete secret dx02v2-tls --namespace dx02v2 --ignore-not-found --wait=true --timeout=5m
+  kubectl delete secret tx02v2-letsencrypt-account --namespace cert-manager --ignore-not-found --wait=true --timeout=5m
+
+  remove_full_application_resources
+  remove_waypoint
+  delete_all imagevalidatingpolicies.policies.kyverno.io
   # Routes first, then the Gateways they attach to, then the policies that target either.
   delete_all httproutes.gateway.networking.k8s.io
   delete_all grpcroutes.gateway.networking.k8s.io
@@ -171,6 +236,7 @@ main() {
 
   log "uninstalling the platform releases"
   uninstall_full_releases
+  delete_full_persistent_volume_claims
   helm uninstall external-secrets --namespace external-secrets --ignore-not-found --wait=watcher --timeout 10m
   helm uninstall alb-controller --namespace azure-alb-system --ignore-not-found --wait=watcher --timeout 10m
   log "platform removed from $CLUSTER_NAME"

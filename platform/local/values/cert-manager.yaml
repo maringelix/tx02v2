@@ -1,6 +1,6 @@
 # jetstack/cert-manager v1.21.2 (namespace cert-manager). Issues the Gateway certificates from the
-# ClusterIssuer lab-ca (stands in for the certificate of an HTTPS listener: in Azure the AGC listener
-# is HTTP on port 80, HTTPS `planned`). Images pinned by digest (verified 2026-10-12).
+# ClusterIssuer lab-ca (the local stand-in for the full profile's public ACME issuer on AGC).
+# Images pinned by digest (verified 2026-10-12).
 crds:
   enabled: true
   keep: false
@@ -41,4 +41,5 @@ resources:
 config:
   apiVersion: controller.config.cert-manager.io/v1alpha1
   kind: ControllerConfiguration
-  enableGatewayAPI: true
+  gatewayAPI:
+    enabled: true

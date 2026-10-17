@@ -180,6 +180,12 @@ Then, from the root of your `tx02v2` clone:
    platform profile, set `LAB_NODE_VM_SIZE=Standard_D2as_v5` and `LAB_NODE_COUNT=2` before plan and
    apply; keep these values through destroy. The workflows pass them to plan/apply/destroy, while
    unset values preserve the cheaper core defaults.
+   The full profile also needs a domain you control. Set `LAB_DNS_ZONE_NAME` (for example,
+   `example.com`), `LAB_APP_DOMAIN_NAME` (for example, `lab.example.com`) and
+   `LAB_ACME_CONTACT_EMAIL` before plan/apply. Delegate the `dns_name_servers` Terraform output
+   at your registrar and wait for public DNS propagation before running `platform --profile full`.
+   The core profile leaves these variables unset. Keep the same values through destroy and remove
+   the registrar delegation after the lab-owned zone is destroyed.
 
 Your fork is public, and so are its workflow logs. The workflows mask the tenant, subscription and
 client IDs ([docs/GUARDRAILS.md](docs/GUARDRAILS.md), CI-07); never paste credentials or those IDs

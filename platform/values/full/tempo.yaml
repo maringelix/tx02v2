@@ -1,0 +1,19 @@
+# Managed-csi persistence for the Azure cloud profile; keep traces for 72 hours and remove the
+# persistent volume with the lab teardown.
+tempo:
+  retention: 72h
+
+persistence:
+  enabled: true
+  enableStatefulSetAutoDeletePVC: false
+  storageClassName: managed-csi
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+
+extraVolumes:
+  - name: tmp
+    emptyDir: {}
+extraVolumeMounts:
+  - name: tmp
+    mountPath: /tmp

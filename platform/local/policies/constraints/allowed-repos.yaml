@@ -13,6 +13,10 @@ spec:
     namespaceSelector:
       matchLabels:
         policy.lab/enforce: "true"
+    labelSelector:
+      matchExpressions:
+        - key: acme.cert-manager.io/http01-solver
+          operator: DoesNotExist
   parameters:
     # The lab registry (dx02v2 images) and the Envoy of the Istio gateways.
     repos:

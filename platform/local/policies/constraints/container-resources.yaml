@@ -11,3 +11,7 @@ spec:
     namespaceSelector:
       matchLabels:
         policy.lab/enforce: "true"
+    labelSelector:
+      matchExpressions:
+        - key: acme.cert-manager.io/http01-solver
+          operator: DoesNotExist

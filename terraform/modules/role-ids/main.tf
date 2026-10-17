@@ -10,12 +10,12 @@
 
 locals {
   lab_assignable = {
-    "AcrPull"                                     = "7f951dda-4ed3-4680-a7ca-43fe172d538d"
-    "AcrPush"                                     = "8311e382-0749-4cb8-b61a-304f252e45ec"
     "App Configuration Data Reader"               = "516239f1-63e1-4d78-a4de-a74fb236a071"
     "AppGw for Containers Configuration Manager"  = "fbc52c3f-28ad-4303-a892-8a056630b8f1"
     "Azure Kubernetes Service Cluster User Role"  = "4abbcc35-e782-43d8-92c5-2d3f1bd2253f"
     "Azure Kubernetes Service RBAC Cluster Admin" = "b1ff04bb-8a4e-4dc4-8eb5-8693973ce19b"
+    "Container Registry Repository Reader"        = "b93aa761-3e63-49ed-ac28-beffa264f7ac"
+    "Container Registry Repository Writer"        = "2a1e307c-b015-4ebd-883e-5b7698a07328"
     "Key Vault Secrets User"                      = "4633458b-17de-408a-b874-0445c86b69e6"
     "Managed Identity Operator"                   = "f1a07417-d97a-45cb-824c-7a7467783830"
     "Monitoring Metrics Publisher"                = "3913510d-42f4-4e42-8a64-420c390055eb"

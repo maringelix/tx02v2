@@ -6,6 +6,9 @@ autoscaleEnabled: false
 replicaCount: 1
 seccompProfile:
   type: RuntimeDefault
+pilot:
+  env:
+    ENABLE_INGRESS_WAYPOINT_ROUTING: "true"
 # Gateways (and waypoints) run in app namespaces with Pod Security "restricted": without an explicit
 # RuntimeDefault seccomp profile their pods are refused there.
 gateways:

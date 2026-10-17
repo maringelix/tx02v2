@@ -14,6 +14,10 @@ All notable changes to this project are documented here. The format follows
   Identity subjects. Local physical PostgreSQL backup and WAL/PITR drill rejects corrupt backups.
   Cloud execution remains not run in Azure (v2); the R9 app proof is coordinated with dx02v2.
 
+- Local R8 platform creates and waits for the ambient waypoint and enrolls the app namespace,
+  including ingress traffic. This matches the Azure full profile's L7 identity policies and
+  prevents the app's default-deny network rules from pointing at an absent waypoint.
+
 - Optional lab-owned Azure DNS zone and app CNAME, with validated fork inputs and mocked Terraform
   tests. The full platform profile bootstraps a public Let's Encrypt certificate over AGC Gateway
   API HTTP-01 before enabling the app's HTTPS listener; core remains the low-cost HTTP exercise.

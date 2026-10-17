@@ -1225,6 +1225,11 @@ main() {
   kubectl version >/dev/null 2>&1 || die "the lab cluster is not reachable (run: scripts/local-lab.sh up)"
   WORK_DIR="$(mktemp -d)"
   trap cleanup EXIT
+  kubectl -n dx02v2 wait --for=condition=Programmed gateway/dx02v2-waypoint --timeout=120s >/dev/null ||
+    die "mesh: the app namespace waypoint is not programmed"
+  [[ "$(kubectl get namespace dx02v2 -o jsonpath='{.metadata.labels.istio\.io/use-waypoint}')" == dx02v2-waypoint ]] ||
+    die "mesh: the app namespace is not enrolled in its waypoint"
+  pass "mesh: app namespace enrolled in the programmed ambient waypoint"
   check_database
   "$REPO_ROOT/scripts/local/pitr-drill.sh" "$(tf_out_image postgres)" "$(tf_out docker_network)" \
     "$(tf_out db_basebackup_volume)" "$(tf_out db_wal_volume)" || die "database: physical PITR drill failed"

@@ -19,6 +19,11 @@ Slack, como no v1, mas o webhook nunca fica em arquivo versionado.
 
 ## O que é criado
 
+O R8 também cria o Gateway `dx02v2-waypoint` e vincula o namespace do app a ele. O tráfego do
+Gateway de entrada passa pelo waypoint para aplicar autorização L7; o instalador espera a condição
+`Programmed` antes de instalar os componentes seguintes. `platform/local/check.sh` confere o
+Gateway e o vínculo do namespace; o CI de dx02v2 prova a comunicação real do app e a política L7.
+
 `terraform/envs/local` (providers `kreuzwerker/docker` 4.6, `hashicorp/tls` 4.4, `hashicorp/random`
 3.9; state local fora do repositório, em `~/.local/state/tx02v2-local`):
 

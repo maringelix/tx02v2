@@ -47,7 +47,7 @@ CONTRACT_KEYS=(
   keyvault/uri db/secret-name app/admin-token-secret-name eso/cluster-secret-store agc/id agc/frontend-name
   waf/policy-id deploy/principal-id
 )
-# Contract v2 (unchanged since v1): rules of the Role dx02v2-deployer, one "apiGroup|resource|verbs" per resource
+# Contract v3: rules of the Role dx02v2-deployer, one "apiGroup|resource|verbs" per resource
 # (verbs sorted). The ALB Controller 1.12.2 CRDs use singular-looking plurals on purpose.
 ROLE_CRUD="create,delete,get,list,patch,update,watch"
 ROLE_READ="get,list,watch"
@@ -56,6 +56,7 @@ CONTRACT_ROLE_RULES=(
   "|services|$ROLE_CRUD" "|configmaps|$ROLE_CRUD" "|serviceaccounts|$ROLE_CRUD"
   "|pods|$ROLE_READ" "|pods/log|$ROLE_READ" "|events|$ROLE_READ" "|endpoints|$ROLE_READ" "|secrets|$ROLE_READ"
   "networking.k8s.io|networkpolicies|$ROLE_CRUD"
+  "networking.istio.io|destinationrules|$ROLE_CRUD" "security.istio.io|authorizationpolicies|$ROLE_CRUD"
   "gateway.networking.k8s.io|gateways|$ROLE_CRUD" "gateway.networking.k8s.io|httproutes|$ROLE_CRUD"
   "alb.networking.azure.io|healthcheckpolicy|$ROLE_CRUD" "alb.networking.azure.io|webapplicationfirewallpolicy|$ROLE_CRUD"
   "autoscaling|horizontalpodautoscalers|$ROLE_CRUD" "policy|poddisruptionbudgets|$ROLE_CRUD"
@@ -1054,6 +1055,14 @@ check_contract_platform() {
     printf 'RoleBinding dx02v2-deployers must bind Role dx02v2-deployer to one User per object ID, in order:\n%s\ngot:\n%s\n' "$want" "$got"
     rc=1
   }
+  got="$(kubectl_local platform/local/manifests/argocd-project-dx02v2.yaml \
+    '{{if eq .kind "AppProject"}}{{range .spec.namespaceResourceWhitelist}}{{.group}}|{{.kind}}{{"\\n"}}{{end}}{{end}}')"
+  for kind in 'networking.istio.io|DestinationRule' 'security.istio.io|AuthorizationPolicy'; do
+    grep -qFx "$kind" <<<"$got" || {
+      printf 'local AppProject dx02v2 must allow the full-profile resource %s; got:\n%s\n' "$kind" "$got"
+      rc=1
+    }
+  done
   # Repeated object IDs (deploy/principal-id also in app_deployer_principal_ids) render once.
   got="$(bash platform/render-manifests.sh "$RENDER_VAULT_URI" "${RENDER_DEPLOYERS[0]},${RENDER_DEPLOYERS[1]},${RENDER_DEPLOYERS[0]}" | grep -c '^  - kind: User$')"
   ((got == ${#RENDER_DEPLOYERS[@]})) || {
@@ -1528,7 +1537,8 @@ check_helm_template_full() {
     echo "platform/gitops: unresolved placeholder in the rendered chart"
     rc=1
   fi
-  for key in 'kind: Gateway' 'kind: HTTPRoute' 'kind: HealthCheckPolicy' 'kind: WebApplicationFirewallPolicy'; do
+  for key in 'kind: Gateway' 'kind: HTTPRoute' 'kind: HealthCheckPolicy' 'kind: WebApplicationFirewallPolicy' \
+    'group: networking.istio.io' 'kind: DestinationRule' 'group: security.istio.io' 'kind: AuthorizationPolicy'; do
     grep -qF "$key" "$out/platform-gitops.yaml" || {
       echo "platform/gitops AppProject must allow the app's Azure resource '$key'"
       rc=1

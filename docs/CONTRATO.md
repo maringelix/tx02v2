@@ -68,6 +68,8 @@ tráfego da Azure no lugar do Ingress:
   pods, pods/log, events, endpoints → get, list, watch; secrets → get, list, watch (o ESO escreve
   os segredos; o deployer nunca os escreve)
 - `networking.k8s.io`: networkpolicies → CRUD completo (mesmos verbos de deployments)
+- `networking.istio.io`: destinationrules; `security.istio.io`: authorizationpolicies → CRUD completo, ambos
+  restritos ao namespace `dx02v2` (malha ambient e canário do perfil full)
 - `gateway.networking.k8s.io`: gateways, httproutes → CRUD completo
 - `alb.networking.azure.io`: `healthcheckpolicy`, `webapplicationfirewallpolicy` → CRUD completo. São
   os valores exatos de `spec.names.plural` dos CRDs do ALB Controller 1.12.2 (parecem singulares de

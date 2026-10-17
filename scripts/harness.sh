@@ -1073,8 +1073,10 @@ check_contract_platform() {
         printf 'namespace %s must carry Pod Security restricted, Istio ambient and Gatekeeper enforcement labels; got:\n%s\n' "$key" "$got"
         rc=1
       fi
-    elif [[ "$got" != $'pod-security.kubernetes.io/enforce=restricted\npod-security.kubernetes.io/enforce-version=latest' ]]; then
-      printf 'namespace %s must carry exactly the Pod Security labels enforce=restricted, enforce-version=latest; got:\n%s\n' "$key" "$got"
+    elif [[ "$got" != $'istio.io/dataplane-mode=ambient\npod-security.kubernetes.io/enforce=restricted\npod-security.kubernetes.io/enforce-version=latest' ]]; then
+      # Ambient: the AuthorizationPolicies of the app trust the Collector by mesh identity, and STRICT
+      # mTLS refuses its plaintext synthetic probes.
+      printf 'namespace %s must carry exactly the Pod Security labels enforce=restricted, enforce-version=latest and istio.io/dataplane-mode=ambient; got:\n%s\n' "$key" "$got"
       rc=1
     fi
   done

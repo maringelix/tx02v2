@@ -79,6 +79,16 @@ spec:
       to:
         - operation:
             ports: ["8080"]
+    # The synthetic probe of the Collector (httpcheck receiver); a request without this policy
+    # entry would be refused, because the Service has an ALLOW policy.
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/observability/sa/opentelemetry-collector
+      to:
+        - operation:
+            ports: ["8080"]
+            paths: ["/healthz"]
 ---
 # ztunnel guard: direct pod-IP traffic cannot bypass the waypoint. The sole exception is the AGC
 # delegated subnet, whose HTTP backend path is already limited to the two app Services by Cilium.

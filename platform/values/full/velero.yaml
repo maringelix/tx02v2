@@ -29,6 +29,8 @@ initContainers:
 credentials:
   useSecret: false
   existingSecret: ""
+# Cloud CSI snapshots use the managed storage driver; local FSB hostPath does not carry into AKS.
+deployNodeAgent: false
 configuration:
   backupStorageLocation:
     - name: default

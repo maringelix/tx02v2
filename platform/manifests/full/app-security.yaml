@@ -1,0 +1,102 @@
+# Cloud-full security for the Azure application. AGC terminates the public TLS connection and
+# forwards HTTP from its delegated subnet to the app Services; that narrow edge exception is
+# restricted by this source-IP policy and by the Cilium NetworkPolicies in dx02v2.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: dx02v2
+spec:
+  mtls:
+    mode: STRICT
+  portLevelMtls:
+    "3000":
+      mode: PERMISSIVE
+    "8080":
+      mode: PERMISSIVE
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: api
+  namespace: dx02v2
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: api
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/dx02v2/sa/web
+      to:
+        - operation:
+            ports: ["3000"]
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/monitoring/sa/kube-prometheus-stack-prometheus
+      to:
+        - operation:
+            ports: ["9464"]
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/observability/sa/opentelemetry-collector
+      to:
+        - operation:
+            ports: ["3000"]
+            paths: ["/healthz", "/readyz"]
+    - from:
+        - source:
+            ipBlocks:
+              - __AGC_SUBNET_CIDR__
+      to:
+        - operation:
+            ports: ["3000"]
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: web-agc-edge
+  namespace: dx02v2
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: web
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            ipBlocks:
+              - __AGC_SUBNET_CIDR__
+      to:
+        - operation:
+            ports: ["8080"]
+---
+# ztunnel guard: direct pod-IP traffic cannot bypass the waypoint. The sole exception is the AGC
+# delegated subnet, whose HTTP backend path is already limited to the two app Services by Cilium.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: api-require-waypoint
+  namespace: dx02v2
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/dx02v2/sa/dx02v2-waypoint
+        - source:
+            ipBlocks:
+              - __AGC_SUBNET_CIDR__
+      to:
+        - operation:
+            ports: ["3000", "9464"]

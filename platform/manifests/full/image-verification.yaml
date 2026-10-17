@@ -1,0 +1,60 @@
+# Fail-closed admission for only the two application repositories in ACR. Azure Workload ID grants
+# Kyverno read access through the azure credential provider. deploy-azure.yml signs an attestation
+# only after source verification and promotion of the same immutable digest.
+apiVersion: policies.kyverno.io/v1
+kind: ImageValidatingPolicy
+metadata:
+  name: dx02v2-release-signatures
+spec:
+  evaluation:
+    mode: JSON
+    background:
+      enabled: false
+  webhookConfiguration:
+    timeoutSeconds: 20
+  failurePolicy: Fail
+  validationActions:
+    - Deny
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - pods
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: dx02v2
+  matchImageReferences:
+    - glob: "*.azurecr.io/dx02v2/api@sha256:*"
+    - glob: "*.azurecr.io/dx02v2/web@sha256:*"
+  validationConfigurations:
+    required: true
+    verifyDigest: true
+  credentials:
+    allowInsecureRegistry: false
+    providers:
+      - azure
+  attestors:
+    - name: github
+      cosign:
+        keyless:
+          identities:
+            - subject: "https://github.com/__GITHUB_OWNER__/dx02v2/.github/workflows/deploy-azure.yml@refs/heads/main"
+              issuer: "https://token.actions.githubusercontent.com"
+        ctlog:
+          url: https://rekor.sigstore.dev
+  attestations:
+    - name: promotion
+      intoto:
+        type: https://github.com/maringelix/tx00v2/attestations/promoted-image/v1
+  validations:
+    - message: "the ACR image must have a promotion attestation from this fork's deploy-azure workflow"
+      expression: >-
+        images.containers.map(image,
+          verifyAttestationSignatures(image, attestations.promotion, [attestors.github]) > 0
+        ).all(verified, verified)

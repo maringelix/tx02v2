@@ -31,7 +31,7 @@ variable "github_owner" {
 # --- Identities and access ---
 
 variable "deploy_principal_id" {
-  description = "Object (principal) ID of the dx02v2-gha-deploy identity (bootstrap output deploy_principal_id). Gets AcrPush, AKS Cluster User Role and App Configuration Data Reader; the RoleBinding of platform/manifests uses it."
+  description = "Object (principal) ID of the dx02v2-gha-deploy identity (bootstrap output deploy_principal_id). Gets repository-scoped ACR Writer on dx02v2/api and dx02v2/web, AKS Cluster User Role and App Configuration Data Reader; the RoleBinding of platform/manifests uses it."
   type        = string
 
   validation {
@@ -66,7 +66,7 @@ variable "cluster_admin_principal_ids" {
 }
 
 variable "app_deployer_principal_ids" {
-  description = "Extra object IDs (people deploying dx02v2 from a laptop) bound to the Role dx02v2-deployer besides deploy_principal_id. They get the same Azure roles as dx02v2-gha-deploy: AcrPush on the registry, AKS Cluster User Role on the cluster and App Configuration Data Reader on the contract store."
+  description = "Extra object IDs (people deploying dx02v2 from a laptop) bound to the Role dx02v2-deployer besides deploy_principal_id. They get the same Azure roles as dx02v2-gha-deploy: repository-scoped ACR Writer on dx02v2/api and dx02v2/web, AKS Cluster User Role and App Configuration Data Reader."
   type        = list(string)
   default     = []
 

@@ -24,7 +24,7 @@ cluster_admin_principal_ids = [
 ]
 
 # Extra deployers (optional): object IDs bound to the Role dx02v2-deployer that also get the Azure
-# roles of dx02v2-gha-deploy (AcrPush, AKS Cluster User Role, App Configuration Data Reader).
+# roles of dx02v2-gha-deploy (repository-scoped ACR Writer, AKS Cluster User Role, App Configuration Data Reader).
 app_deployer_principal_ids = []
 
 # Lab-friendly defaults (change only if you know the cost impact, see docs/CUSTOS.md):

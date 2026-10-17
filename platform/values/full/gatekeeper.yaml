@@ -18,6 +18,7 @@ validatingWebhookExemptNamespacesLabels:
     - monitoring-agents
     - observability
     - argocd
+    - kyverno
     - trivy-system
     - velero
     - chaos-mesh

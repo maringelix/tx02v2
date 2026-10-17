@@ -48,7 +48,10 @@ GATEWAY_API_RELEASES=https://github.com/kubernetes-sigs/gateway-api/releases/dow
 PLATFORM_VAULT=""
 PLATFORM_DEPLOYERS=""
 ACR_LOGIN_SERVER=""
+AGC_SUBNET_CIDR=""
 VELERO_CLIENT_ID=""
+TRIVY_CLIENT_ID=""
+KYVERNO_CLIENT_ID=""
 VELERO_STORAGE_ACCOUNT_URI=""
 AZURE_SUBSCRIPTION_ID=""
 AKS_NODE_RESOURCE_GROUP=""
@@ -67,7 +70,7 @@ load_platform_versions() {
   local line
   while IFS= read -r line || [[ -n "$line" ]]; do
     [[ "$line" =~ ^[[:space:]]*(#.*)?$ ]] && continue
-    [[ "$line" =~ ^([A-Z0-9_]+)=([A-Za-z0-9._-]+)$ ]] || die "invalid line in platform/versions.env: $line"
+    [[ "$line" =~ ^([A-Z0-9_]+)=([A-Za-z0-9._:/-]+)$ ]] || die "invalid line in platform/versions.env: $line"
     printf -v "${BASH_REMATCH[1]}" '%s' "${BASH_REMATCH[2]}"
   done <"$HERE/versions.env"
 }
@@ -224,7 +227,8 @@ apply_full() {
   local attempt
   for attempt in 1 2 3 4 5; do
     if "$HERE/render-manifests.sh" "$PLATFORM_VAULT" "$PLATFORM_DEPLOYERS" \
-      --full "$OWNER" --acr-login-server "$ACR_LOGIN_SERVER" --only "$1" | kubectl apply -f - >/dev/null; then
+      --full "$OWNER" --acr-login-server "$ACR_LOGIN_SERVER" --agc-subnet-cidr "$AGC_SUBNET_CIDR" \
+      --only "$1" | kubectl apply -f - >/dev/null; then
       return 0
     fi
     log "kubectl apply of platform/manifests/$1 failed (attempt $attempt/5); retrying in 15 s"
@@ -247,12 +251,14 @@ install_chart() {
     out="$WORK_DIR/values/$chart/$(printf '%02d' "${#args[@]}")-$(basename "$f")"
     content="$(<"$HERE/$f")"
     content="${content//__VELERO_CLIENT_ID__/$VELERO_CLIENT_ID}"
+    content="${content//__TRIVY_CLIENT_ID__/$TRIVY_CLIENT_ID}"
+    content="${content//__KYVERNO_CLIENT_ID__/$KYVERNO_CLIENT_ID}"
     content="${content//__VELERO_STORAGE_ACCOUNT_URI__/$VELERO_STORAGE_ACCOUNT_URI}"
     content="${content//__AZURE_SUBSCRIPTION_ID__/$AZURE_SUBSCRIPTION_ID}"
     content="${content//__AKS_NODE_RESOURCE_GROUP__/$AKS_NODE_RESOURCE_GROUP}"
     content="${content//__S3_BUCKET__/tx02v2-lab-velero}"
     content="${content//__S3_ENDPOINT__/$VELERO_STORAGE_ACCOUNT_URI}"
-    if [[ "$chart" == velero && "$content" =~ __[A-Z][A-Z0-9_]*__ ]]; then
+    if [[ "$content" =~ __[A-Z][A-Z0-9_]*__ ]]; then
       die "unresolved install-time placeholder ${BASH_REMATCH[0]} in platform/$f"
     fi
     printf '%s\n' "$content" >"$out"
@@ -265,10 +271,10 @@ install_chart() {
 }
 
 install_istio() {
-  local asset="$WORK_DIR/gateway-api-$GATEWAY_CRDS_VERSION.yaml" got
-  download "$GATEWAY_API_RELEASES/$GATEWAY_CRDS_VERSION/standard-install.yaml" "$asset"
+  local asset="$WORK_DIR/gateway-api-$GATEWAY_CRDS_VERSION-experimental.yaml" got
+  download "$GATEWAY_API_RELEASES/$GATEWAY_CRDS_VERSION/experimental-install.yaml" "$asset"
   got="$(sha256_of "$asset")"
-  [[ "$got" == "$GATEWAY_CRDS_SHA256" ]] || die "refusing Gateway API $GATEWAY_CRDS_VERSION: SHA256 differs from platform/local/versions.env"
+  [[ "$got" == "$GATEWAY_CRDS_EXPERIMENTAL_SHA256" ]] || die "refusing experimental Gateway API $GATEWAY_CRDS_VERSION: SHA256 differs from platform/local/versions.env"
   kubectl apply --server-side --force-conflicts -f "$asset" >/dev/null
   kubectl wait --for=condition=Established --timeout=120s \
     crd/gatewayclasses.gateway.networking.k8s.io crd/gateways.gateway.networking.k8s.io crd/httproutes.gateway.networking.k8s.io >/dev/null
@@ -277,6 +283,14 @@ install_istio() {
   install_chart cni
   install_chart ztunnel
   retry 60 2 kubectl get gatewayclass istio >/dev/null 2>&1 || die "istiod did not create the GatewayClass istio"
+  retry 60 2 kubectl get gatewayclass istio-waypoint >/dev/null 2>&1 || die "istiod did not create the GatewayClass istio-waypoint"
+}
+
+install_waypoint() {
+  apply_full full/waypoint.yaml
+  kubectl wait --namespace dx02v2 --for=condition=Programmed gateway/dx02v2-waypoint --timeout=300s >/dev/null ||
+    die "Istio did not program the dx02v2 ambient waypoint"
+  kubectl label namespace dx02v2 istio.io/use-waypoint=dx02v2-waypoint --overwrite >/dev/null
 }
 
 install_observability() {
@@ -331,6 +345,15 @@ install_policies() {
   retry 10 6 kubectl apply -f "$repos" >/dev/null || die "could not apply the Gatekeeper constraint allowed-repos"
 }
 
+install_image_admission() {
+  install_chart kyverno
+  kubectl wait --for=condition=Established --timeout=180s \
+    crd/imagevalidatingpolicies.policies.kyverno.io >/dev/null
+  kubectl --namespace kyverno rollout status deployment/kyverno-admission-controller --timeout=300s >/dev/null ||
+    die "Kyverno's admission controller is not ready; image verification stays fail-closed"
+  apply_full full/image-verification.yaml
+}
+
 install_backup() {
   install_chart velero
   # shellcheck disable=SC2016 # expanded by the inner bash
@@ -348,6 +371,8 @@ install_full() {
     die "cannot read the AKS node resource group for the Azure Workload Identity plugin"
   [[ "$AKS_NODE_RESOURCE_GROUP" =~ ^[A-Za-z0-9._()-]{1,90}$ ]] || die "AKS returned an invalid node resource group name"
   VELERO_CLIENT_ID="$(identity_client_id "$rg" "$LAB_NAME-velero")"
+  TRIVY_CLIENT_ID="$(identity_client_id "$rg" "$LAB_NAME-trivy")"
+  KYVERNO_CLIENT_ID="$(identity_client_id "$rg" "$LAB_NAME-kyverno")"
   storage_name="${LAB_NAME//-/}$(lab_suffix "$sub")velero"
   storage_endpoint="$(az storage account show --resource-group "$rg" --name "$storage_name" --query primaryEndpoints.blob --output tsv)" ||
     die "cannot read the Blob endpoint of $storage_name"
@@ -355,14 +380,20 @@ install_full() {
   VELERO_STORAGE_ACCOUNT_URI="${storage_endpoint%/}"
   ACR_LOGIN_SERVER="$(contract acr/login-server)"
   [[ "$ACR_LOGIN_SERVER" =~ ^[a-z0-9]{5,50}\.azurecr\.io$ ]] || die "contract key acr/login-server is not an ACR login server"
-  for value in "$AZURE_SUBSCRIPTION_ID" "$AKS_NODE_RESOURCE_GROUP" "$VELERO_CLIENT_ID" "$VELERO_STORAGE_ACCOUNT_URI"; do mask "$value"; done
+  AGC_SUBNET_CIDR="$(contract agc-subnet-cidr)"
+  [[ "$AGC_SUBNET_CIDR" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/24$ ]] || die "contract key agc-subnet-cidr is not an IPv4 /24"
+  for value in "$AZURE_SUBSCRIPTION_ID" "$AKS_NODE_RESOURCE_GROUP" "$VELERO_CLIENT_ID" "$TRIVY_CLIENT_ID" "$KYVERNO_CLIENT_ID" "$VELERO_STORAGE_ACCOUNT_URI"; do mask "$value"; done
 
   apply_full full/namespaces.yaml
   install_istio
+  install_waypoint
+  apply_full full/app-security.yaml
   install_chart cert-manager
   install_observability
-  install_gitops
+  apply_full full/app-monitoring.yaml
   install_policies
+  install_image_admission
+  install_gitops
   install_chart trivy-operator
   install_backup
   install_chart chaos-mesh

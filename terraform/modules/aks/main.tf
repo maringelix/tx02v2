@@ -48,7 +48,7 @@ resource "azurerm_kubernetes_cluster" "this" {
     identity_ids = [var.control_plane_identity_id]
   }
 
-  # Pre-created kubelet identity (AcrPull on the registry): known before the cluster, kept in the
+  # Pre-created kubelet identity (repository-scoped ACR Reader): known before the cluster, kept in the
   # lab resource group instead of the AKS-owned node resource group.
   kubelet_identity {
     client_id                 = var.kubelet_identity.client_id

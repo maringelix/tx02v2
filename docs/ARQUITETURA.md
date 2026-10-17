@@ -26,7 +26,7 @@ flowchart LR
         pg[("PostgreSQL Flexible 17<br/>subnet delegada, só privado")]
       end
       kv["Key Vault (RBAC)"]
-      acr["ACR Basic"]
+      acr["ACR Standard (ABAC por repositório)"]
       appcfg["App Configuration Free<br/>contrato tx02v2/lab/"]
     end
     nodes["tx02v2-lab-nodes (do AKS):<br/>VMSS, LB de saída, IP público"]
@@ -34,9 +34,9 @@ flowchart LR
   agc -->|subnet agc /24| aks
   aks -->|5432, TLS| pg
   aks -->|ESO, Workload ID| kv
-  aks -->|kubelet: AcrPull| acr
+  aks -->|kubelet: Repository Reader| acr
   aks --- nodes
-  deployid -->|AcrPush| acr
+  deployid -->|Repository Writer| acr
   deployid -->|Data Reader| appcfg
   deployid -->|Cluster User + RoleBinding| aks
   planid -.->|leitura| st
@@ -51,11 +51,11 @@ está em `docs/CONTRATO.md`.
 
 ## Perfil cloud full (R4)
 
-A camada Terraform continua separada da plataforma Kubernetes. `terraform/envs/lab` provisiona Storage Account Blob, container de backup, identidade Velero e credencial federada; Helm instala 15 charts e configura os overlays Azure. `profile=core` segue como padrão do workflow; `profile=full` acrescenta Istio ambient, observabilidade, GitOps, políticas, scanning, backup e Chaos Mesh.
+A camada Terraform continua separada da plataforma Kubernetes. `terraform/envs/lab` provisiona Storage Account Blob, container de backup, identidade Velero e credencial federada; Helm instala 16 charts e configura os overlays Azure. `profile=core` segue como padrão do workflow; `profile=full` acrescenta Istio ambient com waypoint, observabilidade e SLOs do app, GitOps, Gatekeeper, scanning, admissão de imagens assinadas, backup e Chaos Mesh.
 
 O Argo CD é privado via ClusterIP. Um app-of-apps lê `platform/gitops` deste repositório pela branch `main`; o chart registra `dx02v2` a partir da branch pública `gitops/azure` do repositório de aplicação. O deployer pode fazer `get`, `watch` e `patch` apenas na Application `dx02v2`, sem listar nem alterar outras Applications. Antes de remover rotas ou Gateways, `platform/uninstall.sh` para as Applications para que a reconciliação não recrie os recursos.
 
-Velero usa o plugin Azure, Entra Workload ID e um container Blob privado com expiração de 35 dias. A role de dados é atribuída apenas no container. A Storage Account mantém o endpoint público, sem Private Endpoint, mas seu firewall nega por padrão e permite somente a subnet dos nós do AKS, com o service endpoint `Microsoft.Storage`; o CNI Overlay faz SNAT do tráfego dos pods para o IP do nó. A autenticação dos dados continua por Entra ID e não há chave compartilhada. O backup cobre recursos Kubernetes, não snapshots de disco nem PostgreSQL. O Trivy Operator não recebe credencial ACR; achados de imagens privadas podem ficar incompletos. Essa regra de rede é validada em código e testes mockados, não em uma rodada Azure.
+Velero usa o plugin Azure, Entra Workload ID e um container Blob privado com expiração de 35 dias. A role de dados é atribuída apenas no container. A Storage Account mantém o endpoint público, sem Private Endpoint, mas seu firewall nega por padrão e permite somente a subnet dos nós do AKS, com o service endpoint `Microsoft.Storage`; o CNI Overlay faz SNAT do tráfego dos pods para o IP do nó. A autenticação dos dados continua por Entra ID e não há chave compartilhada. O backup cobre recursos Kubernetes, não snapshots de disco nem PostgreSQL. O Trivy Operator recebe acesso Reader restrito aos dois repositórios do app por Workload ID, e Kyverno recebe a mesma leitura para verificar a atestação Sigstore no admission; nenhuma senha do registry é gravada. Essa regra de rede e o RBAC são validados em código e testes mockados, não em uma rodada Azure.
 
 Renders dos charts reais, contratos e teardown foram verificados localmente. Instalação, backup e restore em Azure continuam `não executado em nuvem (v2)`.
 
@@ -106,9 +106,9 @@ flowchart LR
 | 10 | Azure RBAC para administradores e Kubernetes RBAC para o deployer | contas locais desligadas; admins por `Azure Kubernetes Service RBAC Cluster Admin` (`cluster_admin_principal_ids`, validado, não vazio, sem o deployer); o deployer só obtém o kubeconfig e é limitado pela RoleBinding no namespace `dx02v2` | contas locais; papéis Azure de escrita para o deployer |
 | 11 | App Configuration (Free) como store do contrato | o dx02v2 lê os valores no deploy sem acessar o state; o Free não cobra e aceita 1.000 requisições por dia (cada deploy faz uma listagem) | remote state compartilhado (vaza o state inteiro) |
 | 12 | O bootstrap cria o grupo `tx02v2-lab` e as identidades de CI têm papéis só nele (ou no container do state) | nada no escopo da assinatura; o apply não toca nada fora do lab | apply como Owner da assinatura (v1) |
-| 13 | `Role Based Access Control Administrator` do apply com condição ABAC: só pode atribuir ou remover os 11 papéis built-in de `modules/role-ids` | o lab atribui papéis de sistema, deploy e Velero sem que o apply possa se dar Owner, User Access Administrator, Contributor ou RBAC Administrator; teste `apply_identity_is_scoped_to_the_lab` | User Access Administrator sem condição |
+| 13 | `Role Based Access Control Administrator` do apply com condição ABAC: só pode atribuir ou remover os 11 papéis built-in de `modules/role-ids` | o lab atribui papéis de sistema, deploy, Trivy, Kyverno e Velero sem que o apply possa se dar Owner, User Access Administrator, Contributor ou RBAC Administrator; teste `apply_identity_is_scoped_to_the_lab` | User Access Administrator sem condição |
 | 14 | Papéis do plan: `Reader` em `tx02v2-lab` e `Storage Blob Data Reader` no container do state, nada de plano de dados; o plan roda com `-refresh=false` e `-lock=false` | o plan roda em PRs do próprio repositório e o resumo dele é público: quem cria branches poderia, numa PR, ler os valores dos segredos do Key Vault pelo refresh do azurerm 5.9.0 (`GetSecret` devolve o valor; `ListClusterUserCredentials` e `GetKeyValue` completam a lista). Sem o refresh, o plan mostra a diferença contra o último state, não drift (o apply atualiza); sem plano de dados, um plan alterado não lê segredo nenhum. Antes (rodada R3.16) o plan tinha `Key Vault Secrets User`, `App Configuration Data Reader`, `AKS Cluster User` e um papel só com `ListKeys` | Contributor para o plan; `Key Vault Secrets User` com refresh |
-| 15 | Plano de controle do AKS com identidade user-assigned (`tx02v2-lab-aks`) e identidade kubelet criada antes (`tx02v2-lab-kubelet`, `AcrPull` no ACR) | `Network Contributor` na subnet dos nós e `Managed Identity Operator` na identidade kubelet existem antes do cluster (sem corrida); a identidade kubelet fica no grupo do lab, dentro do escopo do apply | identidades system-assigned (papéis só depois da criação, kubelet no grupo de nós) |
+| 15 | Plano de controle do AKS com identidade user-assigned (`tx02v2-lab-aks`) e identidade kubelet criada antes (`tx02v2-lab-kubelet`, Repository Reader nos repositórios do ACR) | `Network Contributor` na subnet dos nós e `Managed Identity Operator` na identidade kubelet existem antes do cluster (sem corrida); a identidade kubelet fica no grupo do lab, dentro do escopo do apply | identidades system-assigned (papéis só depois da criação, kubelet no grupo de nós) |
 | 16 | Resource providers registrados no bootstrap (`resource_providers_to_register` do provider; o root do lab usa `resource_provider_registrations = "none"`) | o v1 falhou com `MissingSubscriptionRegistration`; registrar exige o escopo da assinatura; o recurso `azurerm_resource_provider_registration` falha se já registrado e desregistra no destroy | registro manual (v1) |
 | 17 | Backend `azurerm` com `container_name`, `key = "lab/terraform.tfstate"` e `use_azuread_auth = true` no código; `storage_account_name` por `-backend-config`; lock por lease de blob | chaves compartilhadas desligadas; um state por root; `resource_group_name` só seria necessário com `lookup_blob_endpoint` | access key ou SAS (v1) |
 | 18 | Conta do state: StorageV2 LRS, TLS 1.2, só HTTPS, sem chaves compartilhadas, OAuth por padrão, sem blobs públicos, versionamento, soft delete de blobs e containers (7 dias), criptografia de infraestrutura e lock `CanNotDelete` | o state sobrevive às rodadas; o lock só sai com `state_protection_lock = false` no teardown | `prevent_destroy` (não dá para desligar por variável) |
@@ -127,13 +127,13 @@ flowchart LR
 | 31 | Lab local com Terraform + provider Docker e kind por CLI (`terraform_data` + `local-exec`) | o mesmo fluxo apply/destroy da nuvem, sem conta; o provider `tehcyx/kind` embute uma versão antiga do kind; o state local guarda credenciais descartáveis desta máquina (`random_password` só em `terraform/envs/local`) | emuladores da Azure (o Azurite emula só o storage; AKS, AGC e Key Vault não têm emulador local oficial); minikube |
 | 32 | Istio ambient no lab local | mTLS e autorização por identidade sem sidecar; roda no kind | sidecar (mais memória por pod); Linkerd |
 | 33 | GitOps local com Argo CD lendo um servidor Git do lab | um único dono do namespace do app; o push usa a chave do state, a leitura é anônima; Argo CD fica ClusterIP | Flux no lab local; o perfil cloud full lê repositórios públicos GitHub e sincroniza `gitops/azure` sem credenciais |
-| 34 | Gatekeeper com políticas próprias testadas no `gator` | as regras do v1, em `deny`, com casos que provam aceitação e recusa; sem o add-on Azure Policy, que no v1 brigava com o Gatekeeper | gatekeeper-library inteira (mais regras do que o lab explica); Kyverno |
+| 34 | Gatekeeper com políticas próprias testadas no `gator`; Kyverno verifica assinaturas de promoção no admission | as regras Gatekeeper em `deny` têm casos de aceitação e recusa; a política Kyverno falha fechada para imagens dos dois repositórios do app e exige digest mais atestação assinada pelo workflow Azure do fork; sem o add-on Azure Policy, que no v1 brigava com o Gatekeeper | gatekeeper-library inteira (mais regras do que o lab explica); Azure Policy add-on |
 | 35 | Alertmanager → `alert-sink` dentro do cluster; receiver do Slack com o webhook num Secret opcional | entrega de alerta provada sem credencial externa; sem webhook, a mensagem no formato do Slack vai para o sink e a sonda confere o conteúdo | webhook do Slack nos values versionados (v1) |
 | 36 | Velero no emulador de objetos (API S3), backup por recursos, sem snapshots | ensaio local de restore em minutos; plugin Azure e Blob privado com Workload ID no perfil cloud full, expiração de 35 dias e role limitada ao container | `pg_dump` sozinho; snapshots CSI; nenhum backup PostgreSQL implícito |
 | 37 | Perfis `core`/`observability`/`operations`/`full`; rede `10.251.0.0/24` e registry em `localhost:5002` | máquinas com pouca memória validam uma camada por vez; o CI roda `full`; rede e porta diferentes das do `tx01v2` (`10.250.0.0/24`, `5001`) evitam colisão entre os labs | um único perfil; os mesmos endereços em todos os pares |
 | 38 | Traces: o OpenTelemetry Collector como único destino OTLP; Tempo no lab local, Application Insights na nuvem (ingestão só com token do Entra ID: autenticação local desligada, extensão `azure_auth` com o Workload ID de `tx02v2-lab-otel` e `Monitoring Metrics Publisher` só nesse recurso) | o app e os Gateways falam só OTLP; trocar o backend não muda o app; a connection string vira endereço, não segredo; Tempo monolítico cabe no kind | connection string com autenticação local (a chave de instrumentação basta para gravar); SDK do Application Insights no app (prende o app à Azure); AAD Auth Proxy em sidecar |
 
-| 39 | Perfil cloud `core` e `full` | full instala 15 charts com pacotes e imagens pinados; requests renderizados: 795 mCPU e 3104 MiB em dois nós; sizing comparado com `docs/CUSTOS.md` | core continua o padrão de menor custo; os checks não aplicam recursos Azure |
+| 39 | Perfil cloud `core` e `full` | full instala 16 charts com pacotes e imagens pinados; requests renderizados: 1315 mCPU e 3680 MiB em dois nós; sizing comparado com `docs/CUSTOS.md` | core continua o padrão de menor custo; os checks não aplicam recursos Azure |
 | 40 | Observabilidade do perfil `full` continua dentro do cluster | mantém as mesmas versões, imagens e sondas do lab local; o custo e os limites da alternativa gerenciada estão em `docs/CUSTOS.md` | Azure Monitor Managed Prometheus + Azure Managed Grafana + Log Analytics |
 | 41 | Istio ambient usa os charts upstream sobre Azure CNI Overlay com dataplane Cilium | o Istio CNI upstream declara compatibilidade com plugins CNI conformes; o AKS mantém o Azure CNI como plugin de rede | malha sidecar ou add-on gerenciado; o suporte ao conjunto upstream não foi validado pela Microsoft nem em nuvem |
 | 42 | Blob do Velero usa firewall com negação padrão e libera apenas a subnet dos nós AKS | service endpoint `Microsoft.Storage`; os pods Overlay saem com SNAT do IP do nó; autenticação Entra ID continua obrigatória; AZU-0010 tem exceção temporária porque nenhum serviço Azure precisa acessar a conta | endpoint público sem regra de rede; bypass genérico de AzureServices |
@@ -235,7 +235,7 @@ que ainda prendem nomes.
 | Entrada | ALB do Load Balancer Controller (Ingress) + web ACL do WAF | Application Gateway for Containers (Gateway API) + política de WAF DRS 2.1 |
 | Banco | RDS PostgreSQL 17, `rds.force_ssl` | PostgreSQL Flexible Server 17 privado, `require_secure_transport = on` |
 | Segredos | Secrets Manager + KMS, ESO por Pod Identity | Key Vault (RBAC), ESO por Workload ID |
-| Registry | ECR com tags imutáveis | ACR Basic (sem imutabilidade: o deploy recusa sobrescrever tags) |
+| Registry | ECR com tags imutáveis | ACR Standard com ABAC por repositório (sem imutabilidade: o deploy recusa sobrescrever tags e a admissão exige atestação do digest promovido) |
 | Contrato | SSM Parameter Store `/tx01v2/lab/*` | App Configuration `tx02v2/lab/*` |
 | Tags | `default_tags` do provider | `local.tags` em cada recurso (check `policy-tags`) |
 | Criptografia | chave KMS do lab | chaves da plataforma (sem CMK) |

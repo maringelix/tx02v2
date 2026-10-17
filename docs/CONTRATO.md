@@ -16,7 +16,7 @@ serviços equivalentes da Azure.
 |---|---|---|
 | Identidades do GitHub: nomes, issuer, audience e um sujeito exato por credencial federada | `terraform/bootstrap/tests/identities.tftest.hcl` | `verificado localmente` |
 | Papéis do plan e do apply; a condição ABAC do apply lista exatamente os papéis que o root do lab atribui | `terraform/bootstrap/tests/roles.tftest.hcl`, `terraform/envs/lab/tests/roles.tftest.hcl` | `verificado localmente` |
-| Papéis de `dx02v2-gha-deploy`, dos `app_deployer_principal_ids`, do ESO, do ALB Controller, do OpenTelemetry Collector e do kubelet | `terraform/envs/lab/tests/roles.tftest.hcl` | `verificado localmente` |
+| Papéis de `dx02v2-gha-deploy`, dos `app_deployer_principal_ids`, do ESO, do ALB Controller, do OpenTelemetry Collector, do kubelet, do Trivy e do Kyverno | `terraform/envs/lab/tests/roles.tftest.hcl` | `verificado localmente` |
 | Velero: identidade federada, Blob privado, firewall `Deny` com acesso só pela subnet AKS, lifecycle de 35 dias e role de dados no container | `terraform/envs/lab/tests/roles.tftest.hcl`, `terraform/envs/lab/tests/network.tftest.hcl`, `helm-template-full` | `verificado localmente` |
 | GitOps: app-of-apps do Argo CD, branch `gitops/azure` e RoleBinding restrita do deployer | `contract-platform`, `helm-template-full` | `verificado localmente` |
 | Application Insights dos traces só com ingestão por Entra ID (autenticação local desligada), workspace e limites diários | `terraform/envs/lab/tests/roles.tftest.hcl` (`traces_accept_only_entra_id_ingestion`) | `verificado localmente` |
@@ -57,7 +57,7 @@ serviços equivalentes da Azure.
 | NetworkPolicy do app com Istio ambient | O dataplane Cilium aplica as políticas; permitir HBONE em TCP 15008 entre pods na malha e as sondas do kubelet em `169.254.7.127/32` (ver `docs/ARQUITETURA.md`, ADR 41); o harness do `dx02v2` confere as regras |
 | Traces (OpenTelemetry, versão 2) | `http://opentelemetry-collector.observability.svc:4318` (OTLP/HTTP). O Collector é instalado pela camada de plataforma no namespace `observability` (mesmos labels de Pod Security) e grava os spans no Application Insights `tx02v2-lab-traces` (workspace `tx02v2-lab-traces`, autenticação local desligada) com a identidade `tx02v2-lab-otel` (Workload ID, sujeito `system:serviceaccount:observability:opentelemetry-collector`; só `Monitoring Metrics Publisher` nesse Application Insights). O app não recebe nenhum papel Azure para isso |
 | RBAC Kubernetes do deployer | Role `dx02v2-deployer` + RoleBinding `dx02v2-deployers` no namespace `dx02v2`; sujeito `kind: User`, `name: <object ID da identidade dx02v2-gha-deploy>` (mais os object IDs de `app_deployer_principal_ids`) |
-| ACR | nome `tx02v2lab<suffix>`, Basic, usuário admin e pull anônimo desligados; repositórios `dx02v2/api`, `dx02v2/web`; imagens com a tag do SHA git completo (40 caracteres) do dx02v2. O Basic não tem imutabilidade de tags no repositório inteiro: o deploy recusa sobrescrever uma tag existente. A identidade kubelet do AKS tem `AcrPull` no registry |
+| ACR | nome `tx02v2lab<suffix>`, Standard com `role_assignment_mode = AbacRepositoryPermissions`, usuário admin e pull anônimo desligados; repositórios `dx02v2/api`, `dx02v2/web`; imagens identificadas pelo digest SHA256. Kubelet, Trivy e Kyverno recebem Repository Reader com condição ABAC separada para cada repositório; o deployer e cada `app_deployer_principal_ids` recebem Repository Writer sob as mesmas condições. Tags usam o SHA git completo (40 caracteres), e o deploy recusa sobrescrever uma tag já publicada |
 | Identidades OIDC do GitHub (user-assigned, em `tx02v2-bootstrap`) | `tx02v2-gha-plan`, `tx02v2-gha-apply`, `dx02v2-gha-deploy` |
 
 Regras da Role `dx02v2-deployer` (namespace `dx02v2`), as mesmas do contrato AWS v1, com os CRDs de
@@ -95,7 +95,8 @@ environment `lab` só implanta a partir de `main`. A identidade `tx02v2-gha-plan
 `tx02v2-lab` e a leitura do state: nenhum plano de dados (nenhum valor de segredo, nenhuma chave da App
 Configuration, nenhuma credencial do AKS), e por isso o plan roda com `-refresh=false`.
 
-Papéis Azure de `dx02v2-gha-deploy` (atribuídos pelo root do lab): `AcrPush` no registry;
+Papéis Azure de `dx02v2-gha-deploy` (atribuídos pelo root do lab): Container Registry Repository Writer
+nos repositórios `dx02v2/api` e `dx02v2/web`, cada um com condição ABAC;
 `Azure Kubernetes Service Cluster User Role` no cluster (para obter o kubeconfig);
 `App Configuration Data Reader` no store do contrato. Nada no Key Vault. Acesso Kubernetes só pela
 RoleBinding acima.
@@ -155,11 +156,20 @@ plan.
 
 ### Perfil cloud full (R4)
 
-O workflow `platform` aceita `profile=core` (padrão) ou `profile=full`. O perfil full instala os 15
+O workflow `platform` aceita `profile=core` (padrão) ou `profile=full`. O perfil full instala os 16
 charts de `platform/full/charts.txt`, todos fixados por versão, SHA256 do pacote e digests de imagem.
-Inclui Istio ambient; cert-manager; Prometheus, Alertmanager, Grafana, Loki, Alloy, Tempo e Collector;
-Argo CD; Gatekeeper; Trivy Operator; Velero; e Chaos Mesh. Os overlays Azure usam Azure Monitor e
-Blob em vez de X-Ray e S3.
+Inclui Istio ambient e waypoint; cert-manager; Prometheus, Alertmanager, Grafana, Loki, Alloy, Tempo e
+Collector; Argo CD; Gatekeeper; Kyverno; Trivy Operator; Velero; e Chaos Mesh. Os overlays Azure usam
+Azure Monitor e Blob em vez de X-Ray e S3. O perfil `full` também instala um `ServiceMonitor`, regras
+de SLO/alerta e dashboard para as métricas da API, com dados em PVCs `managed-csi`.
+
+A política `ImageValidatingPolicy` do Kyverno bloqueia a inicialização de imagens dos dois repositórios
+ACR sem digest ou sem uma atestação Sigstore de promoção. Ela confia somente no sujeito OIDC do
+workflow `deploy-azure.yml` do próprio fork (`refs/heads/main`), com issuer do GitHub, e exige o tipo
+de predicate `https://github.com/maringelix/tx00v2/attestations/promoted-image/v1`. O workflow de
+deploy do dx02v2 precisa assinar o mesmo digest que publicou e promover; a aprovação do Kyverno falha
+fechada. O Trivy e o Kyverno usam identidades federadas do AKS com leitura somente nos dois
+repositórios.
 
 O app-of-apps do Argo CD acompanha `platform/gitops` no repositório público do tx02v2, branch `main`.
 A Application `dx02v2` acompanha o repositório público do app, branch `gitops/azure`, overlay
@@ -230,7 +240,7 @@ resolvidas no texto acima, sem mudar a versão (nenhum valor mudou):
 2. Nomes dos recursos para RBAC: `healthcheckpolicy` e `webapplicationfirewallpolicy`, exatamente
    como os CRDs do ALB Controller 1.12.2 declaram (check `contract-platform`).
 3. Corpo do smoke: 70 KB, abaixo dos 128 KB do WAF; a conclusão (413 da própria API) não muda.
-4. Lacunas: `host` é o FQDN do servidor; o kubelet tem `AcrPull`; os nós são x86-64; a subnet do AGC
+4. Lacunas: `host` é o FQDN do servidor; o kubelet tem Repository Reader apenas nos dois repositórios do app; os nós são x86-64; a subnet do AGC
    é exatamente /24 (validação de `agc_subnet_cidr`); os `app_deployer_principal_ids` recebem os
    papéis Azure de `dx02v2-gha-deploy` (teste `app_deployers_get_the_roles_of_the_deploy_identity`).
 

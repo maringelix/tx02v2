@@ -60,6 +60,14 @@ metadata:
 apiVersion: v1
 kind: Namespace
 metadata:
+  name: kyverno
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+---
+apiVersion: v1
+kind: Namespace
+metadata:
   name: trivy-system
   labels:
     pod-security.kubernetes.io/enforce: baseline

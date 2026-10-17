@@ -194,14 +194,18 @@ mantenha `LAB_NODE_COUNT=2`. O workflow precisa de `tx02v2-gha-apply` em
    `tx02v2-lab-otel` e a connection string do Application Insights `tx02v2-lab-traces` num ConfigMap,
    e espera o `azure-key-vault` ficar `Ready` (o ESO alcançou o Key Vault).
 
-No perfil `full`, o instalador acrescenta Istio ambient, cert-manager, observabilidade no cluster,
-Argo CD com GitOps, Gatekeeper, Trivy Operator, Velero Azure Blob e Chaos Mesh (15 charts fixados no
-total). O app-of-apps lê `platform/gitops` do tx02v2 na branch `main`; o Argo CD acompanha o repositório
+No perfil `full`, o instalador acrescenta Istio ambient com waypoint, cert-manager, observabilidade no
+cluster, Argo CD com GitOps, Gatekeeper, Kyverno, Trivy Operator, Velero Azure Blob e Chaos Mesh (16
+charts fixados no total). O app-of-apps lê `platform/gitops` do tx02v2 na branch `main`; o Argo CD acompanha o repositório
 público do dx02v2 na branch `gitops/azure` e sincroniza `deploy/k8s/overlays/azure`. O workflow
 `deploy-azure` do dx02v2 publica essa branch e configura o overlay, as imagens e os IDs/CIDRs na
 Application viva. A branch recebe apenas parâmetros de exemplo; IDs e CIDRs reais ficam no cluster.
-Argo CD fica ClusterIP; use `kubectl port-forward` para acessar a UI. `platform/uninstall.sh` remove
-primeiro as Applications para impedir que o Argo CD recrie rotas durante o teardown.
+Argo CD fica ClusterIP; use `kubectl port-forward` para acessar a UI. Kyverno exige que as imagens da
+API e do web estejam referenciadas por digest e tenham uma atestação de promoção assinada pelo
+workflow `deploy-azure.yml` do fork. Trivy e Kyverno acessam o ACR por Workload ID e têm leitura só nos
+dois repositórios da aplicação. `platform/uninstall.sh` remove primeiro as Applications para impedir
+que o Argo CD recrie rotas durante o teardown, depois remove as policies Kyverno e os PVCs de
+monitoramento (discos `managed-csi` incluídos).
 
 O Velero grava recursos Kubernetes no container Blob privado com a identidade federada do ServiceAccount
 `velero/velero`; não faz snapshots nem cobre o PostgreSQL. Uma verificação de backup após uma rodada

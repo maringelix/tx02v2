@@ -1,0 +1,35 @@
+# Durable storage for the cloud full profile. Seven-day Prometheus/Loki retention and three-day
+# Alertmanager/Tempo retention fit the lab exercise; the AKS managed-csi volumes are removed by
+# platform/uninstall.sh before terraform destroy.
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    retentionSize: 8GB
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: managed-csi
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 12Gi
+
+alertmanager:
+  alertmanagerSpec:
+    retention: 72h
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: managed-csi
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 2Gi
+
+grafana:
+  persistence:
+    enabled: true
+    type: sts
+    storageClassName: managed-csi
+    accessModes: [ReadWriteOnce]
+    size: 2Gi

@@ -234,11 +234,12 @@ run "container_registry" {
   assert {
     condition = (
       azurerm_container_registry.this.name == "tx02v2labb602d594" &&
-      azurerm_container_registry.this.sku == "Basic" &&
+      azurerm_container_registry.this.sku == "Standard" &&
+      azurerm_container_registry.this.role_assignment_mode == "AbacRepositoryPermissions" &&
       azurerm_container_registry.this.admin_enabled == false &&
       azurerm_container_registry.this.anonymous_pull_enabled == false
     )
-    error_message = "ACR Basic with the admin user and anonymous pull disabled."
+    error_message = "ACR Standard with repository ABAC enabled, the admin user and anonymous pull disabled."
   }
 
   assert {

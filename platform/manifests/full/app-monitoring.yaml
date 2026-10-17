@@ -1,0 +1,111 @@
+# App metrics, dashboard and SLO alerts for the Azure cloud full profile. The app records its own
+# Prometheus histograms and correlated trace IDs; the OpenTelemetry Collector exports traces to
+# Application Insights and synthetic health checks to Prometheus.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: dx02v2-api
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: dx02v2
+spec:
+  namespaceSelector:
+    matchNames: [dx02v2]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: dx02v2-slo
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: dx02v2
+spec:
+  groups:
+    - name: dx02v2.sli
+      rules:
+        - record: dx02v2:api_requests:rate5m
+          expr: sum(rate(http_request_duration_seconds_count{namespace="dx02v2", service="api"}[5m]))
+        - record: dx02v2:api_errors:rate5m
+          expr: sum(rate(http_request_duration_seconds_count{namespace="dx02v2", service="api", status_code=~"5.."}[5m]))
+        - record: dx02v2:availability:ratio_rate5m
+          expr: 1 - (dx02v2:api_errors:rate5m / clamp_min(dx02v2:api_requests:rate5m, 1e-9))
+        - record: dx02v2:error_budget:remaining_ratio7d
+          expr: clamp_min(1 - ((sum(increase(http_request_duration_seconds_count{namespace="dx02v2", service="api", status_code=~"5.."}[7d])) / clamp_min(sum(increase(http_request_duration_seconds_count{namespace="dx02v2", service="api"}[7d])), 1)) / 0.005), 0)
+        - alert: Dx02v2ApiDown
+          expr: absent(up{namespace="dx02v2", service="api"} == 1)
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: No API pod of dx02v2 is being scraped successfully
+        - alert: Dx02v2HighErrorRate
+          expr: (dx02v2:api_errors:rate5m / clamp_min(dx02v2:api_requests:rate5m, 1e-9)) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: More than 5% of the API responses are 5xx
+        - alert: Dx02v2HighLatencyP95
+          expr: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{namespace="dx02v2", service="api"}[5m]))) > 1
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: The API p95 latency is above 1 second
+        - alert: Dx02v2ErrorBudgetBurnFast
+          expr: (dx02v2:api_errors:rate5m / clamp_min(dx02v2:api_requests:rate5m, 1e-9)) > 0.072
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: The 99.5% availability error budget is burning above 14.4x
+        - alert: Dx02v2SyntheticProbeFailed
+          expr: sum by (http_url) (httpcheck_status{http_status_class="2xx"} == 0) > 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: A synthetic HTTP check of dx02v2 is not returning 2xx
+        - alert: Dx02v2PodRestarting
+          expr: increase(kube_pod_container_status_restarts_total{namespace="dx02v2"}[15m]) > 2
+          labels:
+            severity: warning
+          annotations:
+            summary: A container of dx02v2 restarted more than twice in 15 minutes
+        - alert: Dx02v2PodNotReady
+          expr: sum by (pod) (kube_pod_status_ready{namespace="dx02v2", condition="true"}) == 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: A pod of dx02v2 has not been ready for 5 minutes
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dx02v2-api-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  dx02v2-api.json: |
+    {
+      "title": "dx02v2 API SLO",
+      "uid": "dx02v2-api-slo",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": {"from": "now-6h", "to": "now"},
+      "panels": [
+        {"id": 1, "type": "timeseries", "title": "Request rate", "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"expr": "dx02v2:api_requests:rate5m", "legendFormat": "requests/s"}], "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}},
+        {"id": 2, "type": "timeseries", "title": "Availability (5m)", "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"expr": "dx02v2:availability:ratio_rate5m", "legendFormat": "availability"}], "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []}, "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}},
+        {"id": 3, "type": "timeseries", "title": "Error budget remaining (7d)", "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"expr": "dx02v2:error_budget:remaining_ratio7d", "legendFormat": "remaining"}], "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []}, "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}}
+      ]
+    }

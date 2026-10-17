@@ -98,7 +98,7 @@ run "control_plane" {
       azurerm_kubernetes_cluster.this.kubelet_identity[0].object_id == var.kubelet_identity.object_id &&
       output.kubelet_object_id == var.kubelet_identity.object_id
     )
-    error_message = "The kubelets must use the pre-created kubelet identity (AcrPull)."
+    error_message = "The kubelets must use the pre-created identity with repository-scoped ACR Reader assignments."
   }
 
   assert {

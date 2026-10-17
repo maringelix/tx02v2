@@ -24,6 +24,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- The local platform installs the SHA256-pinned experimental Gateway API 1.6.3 CRDs so the R8
+  waypoint exercise can validate bounded HTTPRoute retries without the standard channel pruning them.
 - Cloud contract version 4 publishes the app hostname and ACME contact as two additional App
   Configuration keys. The coordinated dx02v2 full overlay consumes the resulting TLS Secret.
 

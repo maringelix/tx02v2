@@ -1195,10 +1195,10 @@ check_image_admission_policy() {
     echo "the rendered full manifest still contains a template placeholder"
     rc=1
   fi
-  grep -qF 'ipBlocks:' "$rendered" && grep -qF "$RENDER_AGC_SUBNET_CIDR" "$rendered" || {
+  if ! grep -qF 'ipBlocks:' "$rendered" || ! grep -qF "$RENDER_AGC_SUBNET_CIDR" "$rendered"; then
     echo "the rendered app security policy must restrict its edge exception to the contract AGC subnet"
     rc=1
-  }
+  fi
   return "$rc"
 }
 

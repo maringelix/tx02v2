@@ -21,5 +21,6 @@ locals {
     "Monitoring Metrics Publisher"                = "3913510d-42f4-4e42-8a64-420c390055eb"
     "Network Contributor"                         = "4d97b98b-1d4f-4787-a291-c67834d212e7"
     "Storage Blob Data Contributor"               = "ba92f5b4-2d11-453d-a403-e96b0029c9fe"
+    "Storage Blob Data Reader"                    = "2a2b9908-6ea1-4ae2-8e65-a410df84e7d1"
   }
 }

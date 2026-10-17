@@ -191,3 +191,116 @@ resource "azurerm_role_assignment" "lab" {
   condition          = try(each.value.condition, null)
   condition_version  = try(each.value.condition_version, null)
 }
+
+resource "azurerm_role_assignment" "pre_cluster_dr" {
+  for_each = var.postgres_profile == "dr" ? { nodes = module.network_dr[0].aks_nodes_subnet_id } : {}
+
+  scope              = each.value
+  role_definition_id = "${local.role_definition_prefix}/${module.roles.lab_assignable["Network Contributor"]}"
+  principal_id       = azurerm_user_assigned_identity.aks.principal_id
+  principal_type     = "ServicePrincipal"
+  description        = "tx02v2-lab: DR control plane joins the secondary node subnet"
+}
+
+locals {
+  dr_role_assignments = var.postgres_profile == "dr" ? merge(
+    {
+      eso = {
+        role         = "Key Vault Secrets User"
+        scope        = module.keyvault_dr[0].id
+        principal_id = azurerm_user_assigned_identity.eso.principal_id
+      }
+      alb = {
+        role         = "Network Contributor"
+        scope        = module.network_dr[0].agc_subnet_id
+        principal_id = azurerm_user_assigned_identity.alb.principal_id
+      }
+      alb_configuration = {
+        role         = "AppGw for Containers Configuration Manager"
+        scope        = module.agc_dr[0].id
+        principal_id = azurerm_user_assigned_identity.alb.principal_id
+      }
+      velero = {
+        role         = "Storage Blob Data Contributor"
+        scope        = module.velero_dr[0].container_id
+        principal_id = module.velero_dr[0].identity_principal_id
+      }
+      velero_recovery = {
+        role         = "Storage Blob Data Reader"
+        scope        = module.velero.container_id
+        principal_id = module.velero_dr[0].identity_principal_id
+      }
+      otel = {
+        role         = "Monitoring Metrics Publisher"
+        scope        = azurerm_application_insights.traces_dr[0].id
+        principal_id = azurerm_user_assigned_identity.otel.principal_id
+      }
+    },
+    { for pair in setproduct(keys(local.image_writer_principals), local.acr_repositories) :
+      "image-writer-${pair[0]}-${replace(pair[1], "/", "-")}" => {
+        role              = "Container Registry Repository Writer"
+        scope             = module.acr_dr[0].id
+        principal_id      = local.image_writer_principals[pair[0]]
+        condition         = local.acr_writer_conditions[pair[1]]
+        condition_version = "2.0"
+      }
+    },
+    { for pair in setproduct(keys(local.acr_reader_principals), local.acr_repositories) :
+      "image-reader-${pair[0]}-${replace(pair[1], "/", "-")}" => {
+        role              = "Container Registry Repository Reader"
+        scope             = module.acr_dr[0].id
+        principal_id      = local.acr_reader_principals[pair[0]]
+        condition         = local.acr_reader_conditions[pair[1]]
+        condition_version = "2.0"
+      }
+    },
+    { for key, principal in merge({ deploy = var.deploy_principal_id }, { for id in var.app_deployer_principal_ids : "app-${id}" => id }) :
+      "deployer-${key}" => {
+        role         = "Azure Kubernetes Service Cluster User Role"
+        scope        = module.aks_dr[0].cluster_id
+        principal_id = principal
+      }
+    },
+    { for key, principal in merge({ deploy = var.deploy_principal_id }, { for id in var.app_deployer_principal_ids : "app-${id}" => id }) :
+      "config-${key}" => {
+        role         = "App Configuration Data Reader"
+        scope        = module.appconfig_dr[0].id
+        principal_id = principal
+      }
+    },
+    { for id in var.cluster_admin_principal_ids : "admin-${id}" => {
+      role         = "Azure Kubernetes Service RBAC Cluster Admin"
+      scope        = module.aks_dr[0].cluster_id
+      principal_id = id
+    } },
+  ) : {}
+}
+
+resource "azurerm_role_assignment" "dr" {
+  for_each = local.dr_role_assignments
+
+  scope              = each.value.scope
+  role_definition_id = "${local.role_definition_prefix}/${module.roles.lab_assignable[each.value.role]}"
+  principal_id       = each.value.principal_id
+  description        = "tx02v2-lab: DR ${each.key}"
+  condition          = try(each.value.condition, null)
+  condition_version  = try(each.value.condition_version, null)
+}
+
+# Trust only the same named Kubernetes ServiceAccounts under the secondary cluster's OIDC issuer.
+# No client secrets and no trust wildcard; all identities remain within the lab resource group.
+resource "azurerm_federated_identity_credential" "dr" {
+  for_each = var.postgres_profile == "dr" ? {
+    eso     = { id = azurerm_user_assigned_identity.eso.id, subject = "system:serviceaccount:external-secrets:external-secrets" }
+    alb     = { id = azurerm_user_assigned_identity.alb.id, subject = "system:serviceaccount:azure-alb-system:alb-controller-sa" }
+    trivy   = { id = azurerm_user_assigned_identity.trivy.id, subject = "system:serviceaccount:trivy-system:trivy-operator" }
+    kyverno = { id = azurerm_user_assigned_identity.kyverno.id, subject = "system:serviceaccount:kyverno:kyverno-admission-controller" }
+    otel    = { id = azurerm_user_assigned_identity.otel.id, subject = "system:serviceaccount:observability:opentelemetry-collector" }
+  } : {}
+
+  name                      = "${each.key}-dr"
+  user_assigned_identity_id = each.value.id
+  issuer                    = module.aks_dr[0].oidc_issuer_url
+  subject                   = each.value.subject
+  audience                  = local.workload_identity_audience
+}

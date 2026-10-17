@@ -34,7 +34,7 @@ usage() {
 }
 
 main() {
-  local subscription="" force_unlock="" clusters rc=0
+  local subscription="" force_unlock="" clusters target cluster rc=0
   while (($# > 0)); do
     case "$1" in
       --subscription)
@@ -57,13 +57,17 @@ main() {
     die "the active subscription of the Azure CLI is not the one you named: az account set --subscription <ID>, then run again"
   [[ -n "${TF_STATE_STORAGE_ACCOUNT:-}" ]] || die "set TF_STATE_STORAGE_ACCOUNT to the state storage account of the bootstrap"
 
-  clusters="$(az aks list --subscription "$subscription" --resource-group "$LAB_NAME" \
-    --query "[?name=='$LAB_NAME'] | length(@)" --output tsv)" || clusters=unknown
-  if [[ "$clusters" == 0 ]]; then
-    log "cluster $LAB_NAME not found: nothing to uninstall"
-  elif ! bash "$REPO_ROOT/platform/uninstall.sh"; then
-    log "warning: platform/uninstall.sh did not finish; terraform destroy removes the AGC, the cluster and its node resource group anyway"
-  fi
+  for target in primary secondary; do
+    cluster=tx02v2-lab
+    [[ "$target" != secondary ]] || cluster=tx02v2-lab-dr
+    clusters="$(az aks list --subscription "$subscription" --resource-group "$LAB_RESOURCE_GROUP" \
+      --query "[?name=='$cluster'] | length(@)" --output tsv)" || clusters=unknown
+    if [[ "$clusters" == 0 ]]; then
+      log "cluster $cluster not found: nothing to uninstall"
+    elif ! bash "$REPO_ROOT/platform/uninstall.sh" --target "$target"; then
+      log "warning: platform/uninstall.sh did not finish for $cluster; terraform destroy still removes its AGC, cluster and node resource group"
+    fi
+  done
 
   terraform -chdir="$TF_DIR" init -input=false -lockfile=readonly \
     -backend-config="storage_account_name=$TF_STATE_STORAGE_ACCOUNT" || rc=1

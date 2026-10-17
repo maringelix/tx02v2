@@ -6,7 +6,21 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- R9: build selectable regional platform/GitOps, current-credential synchronization, regional
+  tracing, native lag alerts, RAGRS recovery reads and state option, plus portable PVC data backup.
+
 ### Added
+
+- R9 Velero PVC recovery exercise: remove the original claim, PV and bytes, restore through
+  Kopia, require a new claim UID and identical SHA256. The local Velero node agent needs root
+  and kubelet hostPath; the server and application keep their restricted security contexts.
+  A private random repository password is generated before the first backup and preserved.
+
+- R9 continuity profiles `core|ha|dr`: opt-in zone-redundant PostgreSQL on General Purpose,
+  configurable retention/PITR and geo backups, scoped delete lock, private cross-region replica,
+  independent secondary AKS/VNet/ACR/Key Vault/App Configuration/AGC/Velero and exact Workload
+  Identity subjects. Local physical PostgreSQL backup and WAL/PITR drill rejects corrupt backups.
+  Cloud execution remains not run in Azure (v2); the R9 app proof is coordinated with dx02v2.
 
 - Local R8 platform creates and waits for the ambient waypoint and enrolls the app namespace,
   including ingress traffic. This matches the Azure full profile's L7 identity policies and

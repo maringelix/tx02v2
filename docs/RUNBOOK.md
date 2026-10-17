@@ -95,6 +95,21 @@ e os papéis do contrato, e o budget mensal (padrão 25 na moeda de faturamento,
 
 ## 3. Variáveis do GitHub
 
+Os perfis pagos de HA/DR e o restore isolado estão em [CONTINUIDADE.md](CONTINUIDADE.md).
+Nos workflows plan/apply/destroy, `LAB_POSTGRES_PROFILE` seleciona `core` (padrão), `ha` ou `dr`;
+`LAB_POSTGRES_HA_SKU` seleciona o SKU General Purpose (`GP_Standard_D2ads_v5` por padrão).
+`LAB_POSTGRES_BACKUP_RETENTION_DAYS` controla 7–35 dias; `LAB_POSTGRES_GEO_BACKUP` opta por
+geo backup na criação; `LAB_POSTGRES_DELETE_LOCK` cria lock apenas quando o operador tem permissão
+para locks. O Contributor do CI não recebe permissão adicional para isso.
+
+No `dr`, `LAB_DR_LOCATION` é `centralus` para o primário `eastus2`. As faixas podem ser dadas por
+`LAB_DR_VNET_CIDR`, `LAB_DR_AKS_NODES_SUBNET_CIDR`, `LAB_DR_AGC_SUBNET_CIDR`,
+`LAB_DR_POSTGRES_SUBNET_CIDR`, `LAB_DR_POD_CIDR`, `LAB_DR_SERVICE_CIDR`, `LAB_DR_DNS_SERVICE_IP`.
+Defaults: `10.21.0.0/16`, `10.21.0.0/22`, `10.21.4.0/24`, `10.21.5.0/24`, `10.245.0.0/16`,
+`10.1.0.0/16`, `10.1.0.10`. O Terraform recusa sobreposição interna e entre os clusters.
+Mantenha os mesmos inputs no destroy. A troca de política de geo backup pode recriar PostgreSQL;
+revise o plano e os backups antes de mudar um servidor existente.
+
 Settings > Secrets and variables > Actions, como variáveis de repositório (o job de plan não roda
 num environment). As variáveis aparecem nos logs: não coloque nada privado nelas. As três listas que
 nomeiam as **pessoas e o endereço** de quem opera o lab (`LAB_API_SERVER_AUTHORIZED_IP_RANGES`,

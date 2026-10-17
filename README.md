@@ -37,6 +37,8 @@ The lab family (v2):
 | Secret scan and repository policies (no real identifiers or GUIDs, pinned actions, contract tags on every taggable resource, scripts that act only on the lab, v1 regressions) | `verified in CI` | `make static` (`gitleaks`, `policy-*`, `repo-structure`, `version-consistency`) |
 | Contract v4 with dx02v2 (17 App Configuration keys, optional public DNS and ACME TLS, ambient, GitOps and Azure Blob backup) | `verified locally` | `make static`; [docs/CONTRATO.md](docs/CONTRATO.md) |
 | Terraform unit tests with a mocked azurerm provider (OIDC subjects, state account, ABAC role list = lab roles, budget, AKS, PostgreSQL, Key Vault, ACR, AGC + WAF, public DNS, Velero Blob, contract keys, role assignments, Application Insights with Entra ID ingestion only, negative validations) | `verified locally` | `make test`; CI job `test` |
+| R9 PostgreSQL HA/PITR and optional cross-region DR runtime, private replication and scoped identities | `Terraform mocks verified locally; not run in the cloud (v2)` | [Continuity runbook](docs/CONTINUIDADE.md), `tests/continuity.tftest.hcl` |
+| Physical PostgreSQL base backup, corruption rejection and WAL/PITR recovery in Docker | `awaiting CI e2e` | `scripts/local/pitr-drill.sh`, `platform/local/check.sh` |
 | Bootstrap (resource providers, state account, lab resource group, GitHub OIDC identities, budget) | `not run in the cloud (v2)` | `terraform/bootstrap`, `docs/RUNBOOK.md` |
 | Lab apply (VNet, AKS 1.36, PostgreSQL 17, Key Vault, ACR, AGC + WAF, App Configuration contract) | `not run in the cloud (v2)` | `.github/workflows/terraform-apply.yml` |
 | Plan on pull requests | `not run in the cloud (v2)` | `.github/workflows/terraform-plan.yml` |

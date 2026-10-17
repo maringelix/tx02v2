@@ -26,7 +26,7 @@ source "$HERE/../scripts/lib/common.sh"
 source "$REPO_ROOT/scripts/lib/azure.sh"
 export PATH="$REPO_ROOT/.tools/bin:$PATH"
 
-RESOURCE_GROUP=$LAB_NAME
+RESOURCE_GROUP=tx02v2-lab
 CLUSTER_NAME=$LAB_NAME
 AGC_WAIT_SECONDS="${AGC_WAIT_SECONDS:-900}"
 GATEWAY_CLASS=azure-alb-external
@@ -189,7 +189,11 @@ delete_managed_application_load_balancers() {
 }
 
 main() {
-  (($# == 0)) || die "usage: $0 (configuration through environment variables, see the header)"
+  if (($#)); then
+    [[ $# == 2 && "$1" == --target ]] || die "usage: $0 [--target primary|secondary]"
+    select_lab_target "$2"
+    CLUSTER_NAME=$LAB_NAME
+  fi
   local crds crd
   require_cmd az kubectl helm kubelogin
   require_az_login

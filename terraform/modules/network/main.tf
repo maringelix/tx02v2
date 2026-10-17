@@ -23,7 +23,7 @@ resource "azurerm_subnet" "aks_nodes" {
   address_prefixes     = [var.aks_nodes_subnet_cidr]
 
   service_endpoint {
-    service = "Microsoft.Storage"
+    service = var.storage_service_endpoint
   }
 }
 
@@ -94,6 +94,22 @@ resource "azurerm_network_security_rule" "postgres_intra_subnet" {
   source_port_range           = "*"
   destination_address_prefix  = var.postgres_subnet_cidr
   destination_port_range      = "*"
+}
+
+resource "azurerm_network_security_rule" "postgres_from_peer" {
+  count                       = var.postgres_peer_cidr == "" ? 0 : 1
+  name                        = "allow-postgres-from-dr-peer"
+  description                 = "Private PostgreSQL replication between the two peered regions; TCP 5432 only."
+  resource_group_name         = var.resource_group_name
+  network_security_group_name = azurerm_network_security_group.postgres.name
+  priority                    = 120
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_address_prefix       = var.postgres_peer_cidr
+  source_port_range           = "*"
+  destination_address_prefix  = var.postgres_subnet_cidr
+  destination_port_range      = "5432"
 }
 
 resource "azurerm_network_security_rule" "postgres_deny_other_vnet" {

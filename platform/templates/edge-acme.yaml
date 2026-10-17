@@ -49,6 +49,9 @@ metadata:
   namespace: dx02v2
 spec:
   secretName: dx02v2-tls
+  secretTemplate:
+    labels:
+      lab.continuity/tls: "true"
   issuerRef:
     name: tx02v2-letsencrypt-prod
     kind: ClusterIssuer

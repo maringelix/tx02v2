@@ -34,6 +34,7 @@ resource "azurerm_key_vault" "this" {
 # Contract: JSON with string values username, password, host, port, dbname.
 # tflint-ignore: azurerm_resources_missing_prevent_destroy # lab data is disposable: every round ends with terraform destroy (docs/ARQUITETURA.md)
 resource "azurerm_key_vault_secret" "db" {
+  count            = var.manage_values ? 1 : 0
   name             = "${var.name_prefix}-db-app"
   key_vault_id     = azurerm_key_vault.this.id
   content_type     = "application/json"
@@ -45,10 +46,21 @@ resource "azurerm_key_vault_secret" "db" {
 # Contract: plain string, 48 random alphanumeric characters.
 # tflint-ignore: azurerm_resources_missing_prevent_destroy # lab data is disposable: every round ends with terraform destroy (docs/ARQUITETURA.md)
 resource "azurerm_key_vault_secret" "admin_token" {
+  count            = var.manage_values ? 1 : 0
   name             = "${var.name_prefix}-app-admin-token"
   key_vault_id     = azurerm_key_vault.this.id
   content_type     = "text/plain"
   value_wo         = var.admin_token
   value_wo_version = var.admin_token_version
   tags             = var.tags
+}
+
+moved {
+  from = azurerm_key_vault_secret.db
+  to   = azurerm_key_vault_secret.db[0]
+}
+
+moved {
+  from = azurerm_key_vault_secret.admin_token
+  to   = azurerm_key_vault_secret.admin_token[0]
 }

@@ -15,10 +15,15 @@ output "uri" {
 
 output "db_secret_name" {
   description = "Name of the database secret (contract: tx02v2-lab-db-app)."
-  value       = azurerm_key_vault_secret.db.name
+  value       = "${var.name_prefix}-db-app"
 }
 
 output "admin_token_secret_name" {
   description = "Name of the admin token secret (contract: tx02v2-lab-app-admin-token)."
-  value       = azurerm_key_vault_secret.admin_token.name
+  value       = "${var.name_prefix}-app-admin-token"
+}
+
+output "manages_values" {
+  description = "Whether Terraform writes secret values."
+  value       = var.manage_values
 }

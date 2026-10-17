@@ -171,3 +171,11 @@ run "rejects_a_bad_location" {
 
   expect_failures = [var.location]
 }
+run "state_can_survive_regional_loss" {
+  command = apply
+  variables { state_replication_type = "RAGRS" }
+  assert {
+    condition     = azurerm_storage_account.state.account_replication_type == "RAGRS" && azurerm_storage_account.state.blob_properties[0].versioning_enabled
+    error_message = "Regional recovery needs both geo replication and state object versions."
+  }
+}

@@ -53,6 +53,28 @@ Leituras rápidas:
 
 ## O medidor "FreeTierInfrastructureCost" do AKS
 
+### Continuidade R9: HA e segunda região
+
+O `core` preserva a conta acima. O perfil `ha` usa PostgreSQL General Purpose `D2ads_v5` (2 vCores):
+a Azure Retail Prices API retornou **US$0,178/h por servidor em eastus2** em 2026-10-17. HA cobra
+principal e standby: **US$0,356/h**, mais duas cópias de 32 GiB de SSD (~US$0,010/h usando a tarifa
+da tabela base). O banco HA custa cerca de **US$0,366/h**, contra ~US$0,022/h do banco `core`;
+acréscimo de **~US$0,344/h**, **US$1,03 por três horas**, ou **US$251 por 730 horas**.
+
+O `dr` reserva ainda um segundo AKS com nós/discos/saída, ACR Standard, AGC/WAF, segredos/config,
+backup e réplica PostgreSQL zonal. Usando os preços da tabela base como referência para o destino
+`centralus`, o segundo ambiente é aproximadamente **US$0,695/h** (substituir B1ms por D2ads_v5).
+Principal HA + secundário ficam em **~US$1,57/h**, **~US$4,72 por três horas** ou **~US$1.148 por
+730 horas**, antes de egress entre regiões, geo backups, volumes/observabilidade full, restaurações,
+operações e impostos. O destino pode ter outra tarifa: esta é uma hipótese de orçamento, não uma
+fatura. Mesmo sem tráfego, standby, réplica e nós continuam cobrados.
+
+A retenção maior aumenta os blocos de backup usados; geo backup usa preço diferente do LRS.
+O PITR/geo restore cria servidor novo e cobra computação/armazenamento enquanto ele existir.
+Confira [preços oficiais de PostgreSQL](https://azure.microsoft.com/pricing/details/postgresql/flexible-server/)
+e a [API Retail Prices](https://learn.microsoft.com/rest/api/cost-management/retail-prices/azure-retail-prices)
+na região/moeda da assinatura antes do apply. A v2 ainda não foi medida em uma conta Azure.
+
 O que foi verificado em 2026-10-11:
 
 - A Azure Retail Prices API lista, no serviço Azure Kubernetes Service, um medidor com
@@ -128,7 +150,7 @@ esta linha para que a estimativa não se separe dos charts.
 
 | Perfil | Requests dos charts | Nós de referência | Capacidade nominal antes de reservar recursos para AKS e para o app |
 |---|---:|---|---|
-| full | 1315 mCPU / 3680 MiB | 2 × `Standard_D2as_v5` (2 vCPU, 8 GiB cada) | 4000 mCPU / 16384 MiB; os charts usam cerca de 33% da CPU e 22% da memória nominal |
+| full | 1335 mCPU / 3808 MiB | 2 × `Standard_D2as_v5` (2 vCPU, 8 GiB cada) | 4000 mCPU / 16384 MiB; os charts usam cerca de 33% da CPU e 22% da memória nominal |
 
 Os valores são requests de CPU e memória dos charts, não uso medido nem capacidade `allocatable`. Os
 charts também pedem armazenamento: Prometheus 12 GiB, Alertmanager 2 GiB, Grafana 2 GiB, Loki 10 GiB

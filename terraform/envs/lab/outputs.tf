@@ -80,6 +80,36 @@ output "postgres_fqdn" {
   value       = module.postgres.fqdn
 }
 
+output "postgres_profile" {
+  description = "Selected continuity profile."
+  value       = var.postgres_profile
+}
+
+output "dr_cluster_name" {
+  description = "Secondary AKS cluster name or empty without DR."
+  value       = var.postgres_profile == "dr" ? module.aks_dr[0].cluster_name : ""
+}
+
+output "dr_appconfig_endpoint" {
+  description = "Secondary App Configuration endpoint for the coordinated DX deploy workflow."
+  value       = var.postgres_profile == "dr" ? module.appconfig_dr[0].endpoint : ""
+}
+
+output "dr_postgres_name" {
+  description = "Private cross-region read replica for manually approved promotion."
+  value       = var.postgres_profile == "dr" ? azurerm_postgresql_flexible_server.replica[0].name : ""
+}
+
+output "dr_postgres_fqdn" {
+  description = "Regional PostgreSQL TLS hostname used by apply-only current credential synchronization."
+  value       = var.postgres_profile == "dr" ? azurerm_postgresql_flexible_server.replica[0].fqdn : ""
+}
+
+output "dr_location" {
+  description = "Secondary Azure region or empty without DR."
+  value       = var.postgres_profile == "dr" ? var.dr_location : ""
+}
+
 output "eso_identity_client_id" {
   description = "Client ID of tx02v2-lab-eso (ServiceAccount annotation of External Secrets)."
   value       = azurerm_user_assigned_identity.eso.client_id

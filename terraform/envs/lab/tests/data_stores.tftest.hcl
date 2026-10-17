@@ -95,6 +95,32 @@ run "postgres_server" {
   }
 }
 
+run "postgres_zone_redundant_ha_and_geo_backup" {
+  command = apply
+
+  module {
+    source = "../../modules/postgres"
+  }
+
+  variables {
+    sku_name                     = "GP_Standard_D2ads_v5"
+    continuity_profile           = "dr"
+    geo_redundant_backup_enabled = true
+    backup_retention_days        = 14
+  }
+
+  assert {
+    condition = (
+      azurerm_postgresql_flexible_server.this.sku_name == "GP_Standard_D2ads_v5" &&
+      azurerm_postgresql_flexible_server.this.high_availability[0].mode == "ZoneRedundant" &&
+      azurerm_postgresql_flexible_server.this.geo_redundant_backup_enabled == true &&
+      azurerm_postgresql_flexible_server.this.backup_retention_days == 14 &&
+      azurerm_postgresql_flexible_server.this.public_network_access_enabled == false
+    )
+    error_message = "HA/DR uses General Purpose, zone-redundant standby, geo backup and private access."
+  }
+}
+
 run "postgres_password_never_in_plan_or_state" {
   command = apply
 
@@ -167,29 +193,29 @@ run "key_vault_and_secrets" {
   }
 
   assert {
-    condition     = azurerm_key_vault_secret.db.name == "tx02v2-lab-db-app" && azurerm_key_vault_secret.admin_token.name == "tx02v2-lab-app-admin-token"
+    condition     = azurerm_key_vault_secret.db[0].name == "tx02v2-lab-db-app" && azurerm_key_vault_secret.admin_token[0].name == "tx02v2-lab-app-admin-token"
     error_message = "Secret names must follow the contract."
   }
 
   assert {
     condition = (
-      azurerm_key_vault_secret.db.value == null && azurerm_key_vault_secret.db.value_wo == null &&
-      azurerm_key_vault_secret.admin_token.value == null && azurerm_key_vault_secret.admin_token.value_wo == null
+      azurerm_key_vault_secret.db[0].value == null && azurerm_key_vault_secret.db[0].value_wo == null &&
+      azurerm_key_vault_secret.admin_token[0].value == null && azurerm_key_vault_secret.admin_token[0].value_wo == null
     )
     error_message = "Secret values must never be stored (plaintext value unset, write-only value never persisted)."
   }
 
   assert {
     condition = (
-      azurerm_key_vault_secret.db.value_wo_version == 1 && azurerm_key_vault_secret.admin_token.value_wo_version == 1 &&
-      azurerm_key_vault_secret.db.content_type == "application/json" && azurerm_key_vault_secret.admin_token.content_type == "text/plain"
+      azurerm_key_vault_secret.db[0].value_wo_version == 1 && azurerm_key_vault_secret.admin_token[0].value_wo_version == 1 &&
+      azurerm_key_vault_secret.db[0].content_type == "application/json" && azurerm_key_vault_secret.admin_token[0].content_type == "text/plain"
     )
     error_message = "Secrets are written through value_wo (version 1) with their content types."
   }
 
   assert {
     condition = alltrue([
-      for t in [azurerm_key_vault.this.tags, azurerm_key_vault_secret.db.tags, azurerm_key_vault_secret.admin_token.tags] : t == var.tags
+      for t in [azurerm_key_vault.this.tags, azurerm_key_vault_secret.db[0].tags, azurerm_key_vault_secret.admin_token[0].tags] : t == var.tags
     ])
     error_message = "The vault and its secrets carry the contract tags."
   }
@@ -215,7 +241,7 @@ run "secret_rotation" {
   }
 
   assert {
-    condition     = azurerm_key_vault_secret.db.value_wo_version == 2 && azurerm_key_vault_secret.admin_token.value_wo_version == 3
+    condition     = azurerm_key_vault_secret.db[0].value_wo_version == 2 && azurerm_key_vault_secret.admin_token[0].value_wo_version == 3
     error_message = "The versions must drive value_wo_version (rotation)."
   }
 }

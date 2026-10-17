@@ -31,6 +31,18 @@ variable "sku_name" {
   default     = "B_Standard_B1ms"
 }
 
+variable "continuity_profile" {
+  description = "core keeps the Burstable server; ha and dr use zone-redundant standby."
+  type        = string
+  default     = "core"
+}
+
+variable "geo_redundant_backup_enabled" {
+  description = "Replicate backups asynchronously to the Azure paired region. Must be chosen at server creation."
+  type        = bool
+  default     = false
+}
+
 variable "storage_mb" {
   description = "Storage size in MB."
   type        = number

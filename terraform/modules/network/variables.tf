@@ -35,7 +35,22 @@ variable "postgres_subnet_cidr" {
   type        = string
 }
 
+variable "postgres_peer_cidr" {
+  description = "Optional PostgreSQL subnet of the peered DR VNet; permits only TCP/5432 for private read-replica synchronization."
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "Contract tags applied to every taggable resource."
   type        = map(string)
+}
+variable "storage_service_endpoint" {
+  description = "Microsoft.Storage.Global permits recovery from the paired storage region; ordinary labs stay regional."
+  type        = string
+  default     = "Microsoft.Storage"
+  validation {
+    condition     = contains(["Microsoft.Storage", "Microsoft.Storage.Global"], var.storage_service_endpoint)
+    error_message = "Use the regional or global Microsoft Storage service endpoint."
+  }
 }

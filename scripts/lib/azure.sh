@@ -7,6 +7,21 @@
 # exports RESOURCE_GROUP, CLUSTER_NAME or similar for other work must not retarget a script of the lab.
 LAB_PROJECT=tx02v2
 LAB_NAME=tx02v2-lab
+LAB_TARGET=primary
+# shellcheck disable=SC2034 # consumed by callers that select the runtime
+LAB_RESOURCE_GROUP=tx02v2-lab
+
+# shellcheck disable=SC2034 # shared identities trust both exact cluster issuers
+IDENTITY_PREFIX=tx02v2-lab
+select_lab_target() {
+  LAB_TARGET="${1:-primary}"
+  # shellcheck disable=SC2034 # selected cluster consumed by the caller
+  case "$LAB_TARGET" in
+    primary) LAB_NAME=tx02v2-lab ;;
+    secondary) LAB_NAME=tx02v2-lab-dr ;;
+    *) die 'target must be primary or secondary' ;;
+  esac
+}
 LAB_KEY_PREFIX=tx02v2/lab/
 GUID_RE='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 
@@ -60,7 +75,11 @@ appconfig_endpoint() {
   fi
   local sub
   sub="$(subscription_id)" || return 1
-  printf 'https://%s-%s.azconfig.io' "$LAB_NAME" "$(lab_suffix "$sub")"
+  if [[ "$LAB_TARGET" == secondary ]]; then
+    printf 'https://tx02v2-lab-%s-dr.azconfig.io' "$(lab_suffix "$sub")"
+  else
+    printf 'https://tx02v2-lab-%s.azconfig.io' "$(lab_suffix "$sub")"
+  fi
 }
 
 # load_contract -> fills CONTRACT[<key without prefix>] from App Configuration (Entra ID auth).

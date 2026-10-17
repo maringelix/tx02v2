@@ -940,6 +940,8 @@ EOF
   pass "backup: namespace deleted and restored from the backup with its data"
   kubectl -n velero delete restore lab-probe >/dev/null
   kubectl -n velero delete backup lab-probe >/dev/null
+  bash "$REPO_ROOT/scripts/local/volume-restore-drill.sh"
+  pass "backup: Velero restored PVC bytes after original data loss (new claim UID and SHA256)"
 }
 
 # Chaos engineering with a hypothesis: with 2 replicas behind a Service, killing one pod does not
@@ -1231,6 +1233,9 @@ main() {
     die "mesh: the app namespace is not enrolled in its waypoint"
   pass "mesh: app namespace enrolled in the programmed ambient waypoint"
   check_database
+  "$REPO_ROOT/scripts/local/pitr-drill.sh" "$(tf_out_image postgres)" "$(tf_out docker_network)" \
+    "$(tf_out db_basebackup_volume)" "$(tf_out db_wal_volume)" || die "database: physical PITR drill failed"
+  pass "database: corrupted backup refused; physical PostgreSQL base backup + WAL recovered the chosen point"
   probe_namespaces
   deploy_echo
   check_mesh

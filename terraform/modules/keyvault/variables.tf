@@ -1,5 +1,11 @@
 # Inputs are validated by the calling root (terraform/envs/lab); this module trusts them.
 
+variable "manage_values" {
+  description = "Primary values are write-only Terraform resources; DR is filled from current primary values by protected apply."
+  type        = bool
+  default     = true
+}
+
 variable "name" {
   description = "Globally unique vault name (contract: tx02v2-lab-<suffix>, at most 24 characters)."
   type        = string

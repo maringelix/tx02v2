@@ -87,6 +87,8 @@ module "aks" {
   pod_cidr                        = var.pod_cidr
   service_cidr                    = var.service_cidr
   dns_service_ip                  = var.dns_service_ip
+  enable_spot_pool                = var.enable_spot_pool
+  spot_max_price                  = var.spot_max_price
   node_vm_size                    = var.node_vm_size
   node_os_disk_type               = var.node_os_disk_type
   node_os_disk_size_gb            = var.node_os_disk_size_gb

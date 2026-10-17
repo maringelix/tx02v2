@@ -1916,6 +1916,8 @@ register_checks() {
   register static policy-tags check_policy_tags
   register static policy-identifiers check_policy_identifiers
   register static volume-restore-wiring 'bash scripts/tests/volume-restore-wiring.sh'
+  register static finops 'bash scripts/tests/finops.sh'
+  register static finops-charts 'bash scripts/tests/finops-charts.sh'
   register static backup-credentials 'bash scripts/tests/backup-credentials.sh'
   register static dr-current-secrets 'bash scripts/tests/dr-secrets.sh'
   register static region-target 'bash scripts/tests/region-target.sh'

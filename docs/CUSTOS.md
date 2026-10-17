@@ -212,3 +212,7 @@ Application Gateway v2 pelo AGC (cobrado por hora, sem instâncias) e deixa o WA
   rodada e mantenha os alertas do budget.
 - Um Key Vault apagado fica em soft delete por 7 dias (o nome fica reservado, sem cobrança); a purga
   exige permissão no escopo da assinatura (`docs/ARQUITETURA.md`).
+
+## R10: capacidade e FinOps
+
+Veja [FinOps e escala](FINOPS.md) para a topologia kind HA, carga/HPA/PDB, OpenCost, VPA Off, Spot opt-in, pre?os regionais, or?amento/expira??o e limpeza. Constru??o para fork; nada executado na nuvem (v2).

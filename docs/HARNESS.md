@@ -115,3 +115,7 @@ gerada do ESO 2.12) contém `"additionalProperties": false` dentro de um mapa `p
 anterior (commit `f3e4382`, 2026-06-02), que valida o ClusterSecretStore deste repositório em modo
 estrito (um campo com erro de digitação é rejeitado). Reavalie a cada revisão trimestral
 (`docs/SUSTENTACAO.md`, 5.7).
+
+## R10: capacidade e FinOps
+
+Veja [FinOps e escala](FINOPS.md) para a topologia kind HA, carga/HPA/PDB, OpenCost, VPA Off, Spot opt-in, pre?os regionais, or?amento/expira??o e limpeza. Constru??o para fork; nada executado na nuvem (v2).

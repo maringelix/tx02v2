@@ -30,6 +30,8 @@ source "$HERE/../scripts/lib/common.sh"
 source "$REPO_ROOT/scripts/lib/azure.sh"
 # shellcheck source=scripts/lib/platform.sh
 source "$REPO_ROOT/scripts/lib/platform.sh"
+# shellcheck source=scripts/lib/finops.sh
+source "$REPO_ROOT/scripts/lib/finops.sh"
 # shellcheck source=scripts/lib/backup-credentials.sh
 source "$REPO_ROOT/scripts/lib/backup-credentials.sh"
 export PATH="$REPO_ROOT/.tools/bin:$PATH"
@@ -45,6 +47,7 @@ SECRET_STORE=azure-key-vault
 GATEWAY_CLASS_WAIT_SECONDS="${GATEWAY_CLASS_WAIT_SECONDS:-300}"
 WORK_DIR=""
 PROFILE=core
+ENABLE_FINOPS=false
 TARGET=primary
 OWNER=""
 GATEWAY_API_RELEASES=https://github.com/kubernetes-sigs/gateway-api/releases/download
@@ -64,7 +67,7 @@ AGC_ID=""
 AGC_FRONTEND=""
 
 usage() {
-  echo "usage: $0 [--profile core|full] [--github-owner OWNER] [--target primary|secondary]" >&2
+  echo "usage: $0 [--profile core|full] [--github-owner OWNER] [--target primary|secondary] [--finops]" >&2
   exit 2
 }
 
@@ -465,12 +468,14 @@ main() {
         OWNER=$2
         shift 2
         ;;
+      --finops) ENABLE_FINOPS=true; shift ;;
       --target) [[ "${2:-}" == primary || "${2:-}" == secondary ]] || usage; TARGET=$2; shift 2 ;;
       *) usage ;;
     esac
   done
   [[ "$PROFILE" == core || -n "$OWNER" ]] || die "profile full needs --github-owner (the GitHub user or organization of your forks)"
   local rg cluster vault deployer store tenant alb_client eso_client otel_client traces id deployers extra
+  [[ "$ENABLE_FINOPS" == false || "$PROFILE" == full ]] || die '--finops requires profile full'
   require_cmd az kubectl helm kubelogin
   require_az_login
   load_platform_versions
@@ -544,6 +549,9 @@ main() {
   log "platform ready: GatewayClass $GATEWAY_CLASS, ClusterSecretStore $store, namespace dx02v2, OTLP endpoint opentelemetry-collector.$OTEL_NAMESPACE.svc:4318"
   if [[ "$PROFILE" == full ]]; then
     install_full "$rg" "$cluster"
+    if [[ "$ENABLE_FINOPS" == true ]]; then
+      install_finops_stack azure "$cluster" "$(az aks show --resource-group "$rg" --name "$cluster" --query location --output tsv)" dx02v2
+    fi
   fi
 }
 

@@ -255,3 +255,7 @@ All notable changes to this project are documented here. The format follows
 - The CI (`static`, `test`) ran green on GitHub: the README status matrix now says `verified in CI`
   for those rows; AGENTS.md and docs/SUSTENTACAO.md follow.
 - The README family table and AGENTS.md link the Google Cloud pair (`tx03v2`, `dx03v2`), now public.
+
+## R10: capacidade e FinOps
+
+Veja [FinOps e escala](docs/FINOPS.md) para a topologia kind HA, carga/HPA/PDB, OpenCost, VPA Off, Spot opt-in, pre?os regionais, or?amento/expira??o e limpeza. Constru??o para fork; nada executado na nuvem (v2).

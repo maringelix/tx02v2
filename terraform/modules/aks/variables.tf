@@ -1,4 +1,15 @@
 # Inputs are validated by the calling root (terraform/envs/lab); this module trusts them.
+variable "enable_spot_pool" {
+  description = "Opt-in tainted disposable user pool; the system pool stays on-demand."
+  type        = bool
+  default     = false
+}
+
+variable "spot_max_price" {
+  description = "Operator bid ceiling USD/node-hour, not a price forecast."
+  type        = number
+  default     = 0.1
+}
 
 variable "name" {
   description = "Cluster name and name prefix (tx02v2-lab)."

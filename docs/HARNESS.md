@@ -38,6 +38,25 @@ o `tool-versions` uma vez), mais o `local-lab-e2e` no estágio `e2e` (`make e2e`
 
 ## Jobs do CI
 
+### Regressões da auditoria de prontidão cloud
+
+- `edge-acme` renderiza os pares exatos de AGC/frontend de `primary` e `secondary`;
+  recusa pares misturados, nomes externos e target inválido. O renderer recebe o
+  mesmo target do instalador; não executa emissão ACME.
+- `cloud-install` chama as funções reais de instalação core e upgrade full do
+  Collector. Substitui somente as mutações externas e usa Helm para mesclar os
+  values/argumentos de cada chamada. Exige annotation client ID, label de Workload ID
+  e configuração do exporter Azure. `helm-template-full` também confere esses campos
+  no chart real fixado, sem depender dos values retidos de uma release anterior.
+- `image-admission-policy` chama a fixture que converte a política renderizada com
+  `Helm fromYaml`/JSON e a valida com jq. Confere modo `Kubernetes`, namespace,
+  operações de Pods, repos, identidade do workflow e `Fail`/`Deny`; os mutantes em modo
+  `JSON` ou apenas `Audit` precisam falhar. Isso cobre o erro de configuração, sem
+  alegar execução do webhook ou verificação positiva de assinatura em AKS.
+
+Os checks são leves e não acessam Azure. Autenticação real, admissão de imagens
+assinadas e rejeitadas e emissão/renovação TLS continuam provas de homologação cloud.
+
 | Job (`ci.yml`) | Alvo | Estágio do harness |
 |---|---|---|
 | `static` | `make tools && make static` | `static` |

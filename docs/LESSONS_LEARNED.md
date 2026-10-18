@@ -337,331 +337,331 @@ Cost figures are collected in section 17.
   NGINX application-routing add-on support ends November 2026 (checked 2026-10-11).
   `ingressClassName` had replaced `kubernetes.io/ingress.class`; Basic Load Balancer/public IP
   retired on 2025-09-30.
-+
-+
-+## 7. Database
-+
-+### 7.1 Azure SQL in another region through the portal
-+
-+- **Symptom:** `ProvisioningDisabled` ("Provisioning is restricted in this region") in eastus;
-+  the free offer worked only in westus2, creating server/database in the portal with "Apply offer".
-+- **Cause:** offer restrictions and a portal operation that Terraform did not reproduce.
-+- **Fix:** manually create/import server and database; AKS in eastus reached westus2 through a
-+  Private Endpoint and VNet-linked `privatelink.database.windows.net` zone.
-+- **Recommendation:** do not change engine/region for offer restrictions without recording latency,
-+  cross-region traffic and DR implications. The free offer was General Purpose serverless
-+  (100,000 vCore-seconds/month in the notes), but Terraform declared Basic 2 GB; inspect the first
-+  post-import plan to avoid an unintended SKU change.
-+
-+### 7.2 Engine migration broke SQL
-+
-+- **Symptom:** the app showed `connected: false` and `Incorrect syntax near 'current_user'`.
-+- **Cause:** PostgreSQL-to-SQL Server migration left a `CURRENT_USER` query alias reserved in T-SQL.
-+- **Fix:** `SELECT SYSTEM_USER AS db_user`.
-+- **Recommendation:** integration-test the same cloud engine/version with a local container and
-+  parameterized queries. v2 returns to PostgreSQL Flexible Server; reverse migration needs equal care.
-+
-+### 7.3 Public access and duplicated passwords
-+
-+- **Symptom:** public access and "Allow Azure services" enabled; admin password in GitHub
-+  (`AZURE_SQL_PASSWORD`, `TF_VAR_db_password`), state and a Kubernetes Secret.
-+  `Failed to connect to <SQL_SERVER>.database.windows.net:1433` was investigated with in-Pod `nslookup`.
-+- **Cause:** shortcuts to make cross-region connectivity work.
-+- **Fix:** Private Endpoint with a VNet-linked private zone.
-+- **Recommendation:** disable public access; "Allow Azure services" permits connections from any
-+  Azure resource, including other customers. Use Entra/managed identity where the driver supports
-+  it; otherwise generate and store the password in Key Vault.
-+
-+## 8. ACR
-+
-+### 8.1 Admin user and GitHub credentials
-+
-+- **Symptom:** ACR Basic admin enabled; `ACR_USERNAME`/`ACR_PASSWORD` read by
-+  `terraform output -raw` and stored in the application repository's secrets.
-+- **Cause:** shortest path to CI `docker login`.
-+- **Fix:** none recorded.
-+- **Recommendation:** `admin_enabled = false`, OIDC CI with registry-scoped AcrPush, and no registry
-+  passwords in outputs or state.
-+
-+### 8.2 Mixed registries and ImagePullBackOff
-+
-+- **Symptom:** `ImagePullBackOff` / "pull access denied" because an old manifest targeted Docker Hub.
-+  Earlier GHCR pulls depended on a PAT-backed `imagePullSecret`.
-+- **Cause:** three registries and pull secrets across the lab's lifetime.
-+- **Fix:** ACR images and AcrPull for the kubelet identity, without imagePullSecrets.
-+- **Recommendation:** one registry; prove integration with
-+  `az aks check-acr --resource-group <RG> --name <AKS> --acr <ACR_NAME>.azurecr.io`;
-+  use immutable commit-SHA tags or digests instead of `latest`.
-+
-+## 9. Observability
-+
-+### 9.1 Unstable kube-prometheus-stack on a small cluster
-+
-+- **Symptom:** Grafana CrashLoopBackOff from a duplicate sidecar datasource; Prometheus Operator
-+  stuck in ContainerCreating waiting for its admission-webhook Secret; delayed PVCs;
-+  `helm upgrade --install --wait --timeout=15m` hanging.
-+- **Cause:** probably incomplete hook Jobs and unready Pods on a memory-constrained cluster.
-+  The notes' explanation, excessive `--wait` checks, was not established.
-+- **Fix:** disable datasource sidecar, admission webhooks, operator TLS and persistence;
-+  remove `--wait`, use five-minute timeout and lower requests.
-+- **Recommendation:** keep `--wait` or `--atomic` and inspect hook events/logs instead of disabling
-+  protections; choose persistence/retention deliberately, not by elimination.
-+
-+### 9.2 Alerts that could not fire
-+
-+- **Symptom:** six dx02 rules for >5% errors, >1-s latency and database connectivity while the app
-+  exposed no `/metrics`; Alertmanager receiver `null`; `unsupported scheme "" for URL` from an
-+  empty webhook; plans to put the webhook directly in committed values.
-+- **Cause:** rules preceded instrumentation.
-+- **Fix:** disable Slack until a webhook existed.
-+- **Recommendation:** instrument first (prom-client or OpenTelemetry), validate delivery with a
-+  synthetic alert, and read `api_url_file` from a Key Vault-synchronized Secret.
-+- **Outdated (October 2026):** Alertmanager routes replaced `match` with `matchers`.
-+
-+### 9.3 Default Grafana credentials
-+
-+- **Symptom:** chart-default username/password; port-forward after LoadBalancer failed.
-+- **Cause:** accepting default values without review.
-+- **Fix:** none recorded.
-+- **Recommendation:** Key Vault-generated password delivered by External Secrets, or Entra SSO;
-+  no operational UI on a public IP.
-+
-+### 9.4 Logging/APM guides detached from the app
-+
-+- **Symptom:** `ContainerLog` queries and `omsagent` troubleshooting; APM guide used
-+  `applicationinsights` SDK `setup().start()`, `REACT_APP_*` in Vite, and separate backend/frontend
-+  images while the app was one Express-served image. The APM SDK was never integrated.
-+- **Cause:** generic guides written without inspecting the code.
-+- **Fix:** none recorded.
-+- **Recommendation:** start with the actual app: backend OpenTelemetry with
-+  `@azure/monitor-opentelemetry`, Vite build-time `import.meta.env.VITE_*`, and sampling chosen
-+  alongside the ingestion budget.
-+- **Outdated (October 2026):** Container Insights uses Azure Monitor Agent (`ama-logs` Pods);
-+  recommended schema is `ContainerLogV2`. Application Insights Node.js 3.x uses OpenTelemetry;
-+  React deprecated `ReactDOM.render` in React 18.
-+
-+## 10. Service mesh
-+
-+### 10.1 An injection label ignored by the add-on
-+
-+- **Symptom:** after `az aks mesh enable`, namespace label `istio-injection=enabled` and docs
-+  claiming implemented Pod mTLS.
-+- **Cause:** AKS Istio add-on needs revision label `istio.io/rev=asm-X-Y`; it ignores the generic
-+  injection label.
-+- **Fix:** none recorded, nor was a sidecar verification recorded.
-+- **Recommendation:** read `az aks show --query 'serviceMeshProfile.istio.revisions'`, label,
-+  `kubectl rollout restart` and confirm `istio-proxy` before claiming mTLS.
-+  Plan canary revision upgrades.
-+
-+### 10.2 Upstream Istio examples applied to the add-on
-+
-+- **Symptom:** `svc/istio-ingressgateway` commands and Gateway selector `istio: ingressgateway`,
-+  while the add-on publishes `aks-istio-ingressgateway-external` in `aks-istio-ingress`.
-+  Only the roadmap STRICT example used that selector; the notes said Telemetry API was unsupported.
-+- **Cause:** copied upstream examples.
-+- **Fix:** none recorded.
-+- **Recommendation:** treat the add-on as a separate product: check AKS names, labels and limitations;
-+  use `istioctl analyze` against `aks-istio-system`.
-+- **Outdated (October 2026):** separate Pilot/Citadel/Galley predates istiod (2020);
-+  `consecutive5xxErrors` replaced `consecutiveErrors`; `istioctl authn tls-check` no longer exists.
-+
-+### 10.3 PERMISSIVE for ingress outside the mesh
-+
-+- **Symptom:** PERMISSIVE accepted NGINX/gateway traffic without sidecars; sample
-+  `mtls-strict.yaml` actually applied PERMISSIVE.
-+- **Cause:** ingress was outside the mesh.
-+- **Fix:** none; STRICT remained on the roadmap.
-+- **Recommendation:** assess mesh value on a small cluster, accounting for every sidecar's
-+  CPU/memory. If retained, use mesh-gateway ingress and namespace STRICT, testing the transition.
-+
-+## 11. GitOps
-+
-+### 11.1 Two deployment paths
-+
-+- **Symptom:** a workflow used `kubectl apply`; `kubectl delete pods -n dx02 --all` pulled `latest`;
-+  an Argo CD Application with `prune`/`selfHeal` also owned dx02 manifests.
-+- **Cause:** GitOps added without removing imperative deployment.
-+- **Fix:** none recorded.
-+- **Recommendation:** one resource owner: CI publishes an image and updates Git tag/digest;
-+  Argo CD synchronizes and rollback uses `git revert`.
-+
-+### 11.2 Exposed, unpinned Argo CD
-+
-+- **Symptom:** HTTP LoadBalancer `argocd-server` with public IP; input-supplied admin password;
-+  GitHub webhook at `http://<PUBLIC_IP>/api/webhook`; v2.13.3 installation manifest and `latest` CLI.
-+- **Cause:** focus on getting the UI working.
-+- **Fix:** none recorded.
-+- **Recommendation:** no public IP (port-forward, or Entra SSO behind TLS gateway); disable local
-+  admin after SSO, pin versions, use HTTPS/secret webhook or polling.
-+- **Outdated (October 2026):** Argo CD 2.x is unsupported; the current line was 3.x.
-+
-+## 12. Policies
-+
-+### 12.1 Gatekeeper without a path to deny
-+
-+- **Symptom:** three policies: labels/limits in `dryrun`, privileged containers in `deny`.
-+  Audit found five Pods without limits; exclusions covered kube-system, gatekeeper-system and monitoring.
-+- **Cause:** gradual rollout without an owner/deadline.
-+- **Fix:** none recorded.
-+- **Recommendation:** dated dryrun → warn → deny stages with reviewed explicit exclusions.
-+  Chaos Mesh was absent from the exception list although its daemon is privileged; resolve before install.
-+
-+### 12.2 A nonfunctional NetworkPolicy example
-+
-+- **Symptom:** ingress selected namespace label `name: ingress-nginx`, absent by default;
-+  egress targeted `app: sql-server` Pods while the database was external PaaS.
-+- **Cause:** an untested generic example.
-+- **Fix:** none recorded.
-+- **Recommendation:** select namespaces with `kubernetes.io/metadata.name`; allow PaaS egress through
-+  the private-endpoint subnet `ipBlock` and kube-dns DNS; test an ephemeral Pod before deny-all.
-+
-+## 13. Chaos engineering
-+
-+### 13.1 No hypothesis or measurement
-+
-+- **Symptom:** measurement queries (`http_requests_total`, `http_request_duration_seconds_bucket`)
-+  needed unexposed app metrics. "all-experiments" combined Pod kill every two minutes, 200-ms
-+  latency, 80% CPU and 256-MB memory stress in `prd` for ten minutes.
-+- **Cause:** tool selected before hypothesis/SLI.
-+- **Fix:** none recorded.
-+- **Recommendation:** written hypothesis, measured SLI, one failure at a time, abort criterion,
-+  and a nonproduction environment.
-+
-+### 13.2 Chaos Mesh prerequisites and zero-cost claims
-+
-+- **Symptom:** reinstall failed with `CRDs already exist`; dry-run installed Chaos Mesh even
-+  without experiments; suggested subscription Contributor for Chaos Studio 403; cost called zero.
-+- **Cause:** incomplete cleanup, privilege shortcuts and ignored resource use.
-+- **Fix:** `helm uninstall`, delete chaos-mesh namespace and CRDs before reinstall.
-+- **Recommendation:** AKS uses containerd; configure `chaosDaemon.runtime=containerd` and
-+  `chaosDaemon.socketPath=/run/containerd/containerd.sock`. Each privileged node daemon consumes
-+  CPU/memory and needs an explicit policy exception.
-+
-+## 14. Backup and recovery
-+
-+### 14.1 DR based on a false premise
-+
-+- **Symptom:** westus2 database called built-in geographic redundancy, relying on geo restore,
-+  while creation instructions selected locally redundant backup storage.
-+- **Cause:** offer-imposed region mistaken for a DR design.
-+- **Fix:** none recorded.
-+- **Recommendation:** geo restore requires geo-redundant backup storage. Design, test and measure
-+  DR (observed RTO/RPO, not copied targets).
-+
-+### 14.2 Backing up nonexistent resources
-+
-+- **Symptom:** configurable 7–30-day PITR for Basic database; planned snapshots of nonpersistent
-+  Prometheus/Grafana PVs; restore PV used in-tree `azureDisk`; instructions waited for a weekly first full.
-+- **Cause:** generic document not checked against deployment.
-+- **Fix:** none recorded.
-+- **Recommendation:** inspect each actual resource. Basic supports at most seven days PITR;
-+  the first full is scheduled soon after database creation; restore disks with CSI
-+  (`disk.csi.azure.com`) PVs.
-+- **Outdated (October 2026):** Kubernetes 1.27 removed the in-tree `azureDisk` plugin.
-+
-+### 14.3 State restore used wrong names
-+
-+- **Symptom:** restore commands named different container/blob than the backend, listed snapshots
-+  instead of versions, and promised 30-day soft delete while bootstrap configured seven days.
-+- **Cause:** commands written without reading backend configuration.
-+- **Fix:** none recorded.
-+- **Recommendation:** derive commands from `backend`, configure bootstrap versioning/soft delete,
-+  and rehearse state restore once per lab cycle.
-+
-+## 15. Security scanning
-+
-+### 15.1 Unpinned tools and actions
-+
-+- **Symptom:** `aquasecurity/trivy-action@master`,
-+  `SonarSource/sonarcloud-github-action@master`, tfsec, `owasp/zap2docker-stable` and
-+  scanner `-Dsonar.login`.
-+- **Cause:** copied shortest-reference examples.
-+- **Fix:** none recorded.
-+- **Recommendation:** commit-SHA actions with Dependabot updates; image/IaC Trivy, Checkov and
-+  gitleaks in credential-free CI.
-+- **Outdated (October 2026):** tfsec merged into Trivy (`trivy config`); SonarCloud became
-+  SonarQube Cloud; recommended action is `SonarSource/sonarqube-scan-action` with `sonar.token`
-+  instead of `sonar.login`. ZAP image became `ghcr.io/zaproxy/zaproxy:stable`.
-+
-+### 15.2 Scans that blocked nothing
-+
-+- **Symptom:** trivy-action omitted `exit-code` (default 0), despite promised deployment blocking.
-+  tx02 had security rating C and 0% reviewed SonarCloud hotspots. Static "Quality Gate Passed"
-+  badges appeared while the gate was "Not computed". An IaC guide ignored TLS 1.0 as a free-tier limitation.
-+- **Cause:** reporting tools mistaken for gates.
-+- **Fix:** none recorded.
-+- **Recommendation:** build, scan with `exit-code: 1`, then push; fail on HIGH/CRITICAL.
-+  Dynamic badges, required quality-gate checks, technically justified time-bounded ignores.
-+
-+### 15.3 Fixes that introduce another problem
-+
-+- **Symptom:** blank page fixed by Helmet `contentSecurityPolicy: false`; NGINX
-+  `configuration-snippet` headers including `X-XSS-Protection`; `git filter-branch` for a
-+  historic secret; DAST targeted a public HTTP IP.
-+- **Cause:** treating the immediate symptom.
-+- **Fix:** CSP remained disabled.
-+- **Recommendation:** on HTTP-only sites Helmet's default `upgrade-insecure-requests` commonly
-+  causes blank pages: adjust that directive rather than disabling CSP. Rotate leaked credentials
-+  first, then clean history with `git filter-repo`; target the TLS hostname for DAST.
-+- **Outdated (October 2026):** `X-XSS-Protection` is obsolete in browsers; images used
-+  `node:18-alpine` (EOL April 2025) and `node:20` (EOL April 2026).
-+
-+## 16. Cleanup and orphaned resources
-+
-+### 16.1 Destroy cannot reach resources Terraform did not create
-+
-+- **Symptom:** security workflow created gateway/WAF/public IP/subnet outside Terraform;
-+  portal database entered state only if `|| true` import worked; Services created IPs/LBs in
-+  `MC_<RG>_<AKS>_<REGION>`; Chaos Mesh CRDs remained. Guidance was destroy before each new apply
-+  or `az group delete --name <RG> --yes --no-wait`.
-+- **Cause:** multiple infrastructure owners.
-+- **Fix:** destroy and manual resource-group deletion.
-+- **Recommendation:** Terraform or GitOps creates everything; afterward check `az group list`
-+  and `az resource list` filtered by lab tag, including IPs, disks, snapshots, private DNS zones,
-+  workspaces and Azure's automatically created NetworkWatcherRG.
-+
-+### 16.2 Asynchronous deletion and retained names
-+
-+- **Symptom:** `--no-wait` returned before deletion finished; SQL server name remained reserved for
-+  5–10 minutes; dynamic DNS retained the old IP until manually updated.
-+- **Cause:** asynchronous operations and post-delete name retention.
-+- **Fix:** wait and retry manually.
-+- **Recommendation:** `az group wait --name <RG> --deleted` before leftover checks; account for
-+  name-retaining soft delete (Key Vault, Log Analytics workspace) in recreation plans.
-+  Destroy DNS records to avoid dangling references.
-+
-+## 17. Cost figures from the notes
-+
-+Historical reference estimates (December 2025 to January 2026), not a current budget.
-+
-+| Item | Figure in the notes |
-+|---|---|
-+| AKS, two Standard_D2s_v3 nodes | about US$150/month |
-+| PostgreSQL Standard_D2s_v3, planned but never created | about US$100/month |
-+| Basic Load Balancer | about US$20/month |
-+| State storage | US$0.01–2/month depending on guide |
-+| Base total in AKS mode | about US$272/month; VM mode about US$30/month |
-+| January plan: three Standard_B2s nodes | US$30–50/month |
-+| January plan: network and Private Endpoint | US$5–10/month and US$3–5/month |
-+| January plan: declared total | US$38–65/month, pricing AKS control plane, PostgreSQL B1ms and ACR Basic at US$0 |
-+| Two-instance Application Gateway WAF_v2 | base about US$246/month, US$0.008/GB processed, average US$250–350/month |
-+| Gateway public IP | about US$4/month |
-+| Application Gateway Standard_v2 without WAF | about US$125/month |
-+| ingress-nginx LoadBalancer | US$20–30/month |
-+| Log Analytics | 5 GB/month free; US$2.30/GB; extra retention US$0.10/GB/month |
-+| Estimated logs, about 24 GB/month | about US$44/month, or US$20–40 with filters |
-+| Application Insights, 50% sampling, about 2.2 GB/month | declared US$0; availability test US$1.20/test/month; multistep US$4.80/test/month |
-+| Azure SQL Basic, backup included | about US$5/month |
-+| SQL LTR, about 20 GB | about US$0.50/month (US$0.02/GB) |
-+| Disk snapshots, 50 GB | about US$2.50/month (US$0.05/GB) |
-+| Chaos Mesh | US$0 plus about US$5/month logs |
-+| Free Trial credit | R$1,078.95 (about US$200) for 30 days, estimated 25 AKS-mode days |
-+| Azure SQL free offer | 100,000 vCore-seconds/month |
-+
-+Still-relevant lessons: credit ran out in weeks; WAF ingress cost as much as or more than the
-+remaining lab; ACR Basic is billed daily, not free; Basic Load Balancer/public IP retired on
-+2025-09-30.
-+
-+The v2 largest item is Application Gateway for Containers with WAF: about US$0.28/hour
-+(Azure Retail Prices API, eastus, 2026-10-11), assuming one frontend, one association and roughly
-+one capacity unit, or about US$204/month if left running continuously.
+
+
+## 7. Database
+
+### 7.1 Azure SQL in another region through the portal
+
+- **Symptom:** `ProvisioningDisabled` ("Provisioning is restricted in this region") in eastus;
+  the free offer worked only in westus2, creating server/database in the portal with "Apply offer".
+- **Cause:** offer restrictions and a portal operation that Terraform did not reproduce.
+- **Fix:** manually create/import server and database; AKS in eastus reached westus2 through a
+  Private Endpoint and VNet-linked `privatelink.database.windows.net` zone.
+- **Recommendation:** do not change engine/region for offer restrictions without recording latency,
+  cross-region traffic and DR implications. The free offer was General Purpose serverless
+  (100,000 vCore-seconds/month in the notes), but Terraform declared Basic 2 GB; inspect the first
+  post-import plan to avoid an unintended SKU change.
+
+### 7.2 Engine migration broke SQL
+
+- **Symptom:** the app showed `connected: false` and `Incorrect syntax near 'current_user'`.
+- **Cause:** PostgreSQL-to-SQL Server migration left a `CURRENT_USER` query alias reserved in T-SQL.
+- **Fix:** `SELECT SYSTEM_USER AS db_user`.
+- **Recommendation:** integration-test the same cloud engine/version with a local container and
+  parameterized queries. v2 returns to PostgreSQL Flexible Server; reverse migration needs equal care.
+
+### 7.3 Public access and duplicated passwords
+
+- **Symptom:** public access and "Allow Azure services" enabled; admin password in GitHub
+  (`AZURE_SQL_PASSWORD`, `TF_VAR_db_password`), state and a Kubernetes Secret.
+  `Failed to connect to <SQL_SERVER>.database.windows.net:1433` was investigated with in-Pod `nslookup`.
+- **Cause:** shortcuts to make cross-region connectivity work.
+- **Fix:** Private Endpoint with a VNet-linked private zone.
+- **Recommendation:** disable public access; "Allow Azure services" permits connections from any
+  Azure resource, including other customers. Use Entra/managed identity where the driver supports
+  it; otherwise generate and store the password in Key Vault.
+
+## 8. ACR
+
+### 8.1 Admin user and GitHub credentials
+
+- **Symptom:** ACR Basic admin enabled; `ACR_USERNAME`/`ACR_PASSWORD` read by
+  `terraform output -raw` and stored in the application repository's secrets.
+- **Cause:** shortest path to CI `docker login`.
+- **Fix:** none recorded.
+- **Recommendation:** `admin_enabled = false`, OIDC CI with registry-scoped AcrPush, and no registry
+  passwords in outputs or state.
+
+### 8.2 Mixed registries and ImagePullBackOff
+
+- **Symptom:** `ImagePullBackOff` / "pull access denied" because an old manifest targeted Docker Hub.
+  Earlier GHCR pulls depended on a PAT-backed `imagePullSecret`.
+- **Cause:** three registries and pull secrets across the lab's lifetime.
+- **Fix:** ACR images and AcrPull for the kubelet identity, without imagePullSecrets.
+- **Recommendation:** one registry; prove integration with
+  `az aks check-acr --resource-group <RG> --name <AKS> --acr <ACR_NAME>.azurecr.io`;
+  use immutable commit-SHA tags or digests instead of `latest`.
+
+## 9. Observability
+
+### 9.1 Unstable kube-prometheus-stack on a small cluster
+
+- **Symptom:** Grafana CrashLoopBackOff from a duplicate sidecar datasource; Prometheus Operator
+  stuck in ContainerCreating waiting for its admission-webhook Secret; delayed PVCs;
+  `helm upgrade --install --wait --timeout=15m` hanging.
+- **Cause:** probably incomplete hook Jobs and unready Pods on a memory-constrained cluster.
+  The notes' explanation, excessive `--wait` checks, was not established.
+- **Fix:** disable datasource sidecar, admission webhooks, operator TLS and persistence;
+  remove `--wait`, use five-minute timeout and lower requests.
+- **Recommendation:** keep `--wait` or `--atomic` and inspect hook events/logs instead of disabling
+  protections; choose persistence/retention deliberately, not by elimination.
+
+### 9.2 Alerts that could not fire
+
+- **Symptom:** six dx02 rules for >5% errors, >1-s latency and database connectivity while the app
+  exposed no `/metrics`; Alertmanager receiver `null`; `unsupported scheme "" for URL` from an
+  empty webhook; plans to put the webhook directly in committed values.
+- **Cause:** rules preceded instrumentation.
+- **Fix:** disable Slack until a webhook existed.
+- **Recommendation:** instrument first (prom-client or OpenTelemetry), validate delivery with a
+  synthetic alert, and read `api_url_file` from a Key Vault-synchronized Secret.
+- **Outdated (October 2026):** Alertmanager routes replaced `match` with `matchers`.
+
+### 9.3 Default Grafana credentials
+
+- **Symptom:** chart-default username/password; port-forward after LoadBalancer failed.
+- **Cause:** accepting default values without review.
+- **Fix:** none recorded.
+- **Recommendation:** Key Vault-generated password delivered by External Secrets, or Entra SSO;
+  no operational UI on a public IP.
+
+### 9.4 Logging/APM guides detached from the app
+
+- **Symptom:** `ContainerLog` queries and `omsagent` troubleshooting; APM guide used
+  `applicationinsights` SDK `setup().start()`, `REACT_APP_*` in Vite, and separate backend/frontend
+  images while the app was one Express-served image. The APM SDK was never integrated.
+- **Cause:** generic guides written without inspecting the code.
+- **Fix:** none recorded.
+- **Recommendation:** start with the actual app: backend OpenTelemetry with
+  `@azure/monitor-opentelemetry`, Vite build-time `import.meta.env.VITE_*`, and sampling chosen
+  alongside the ingestion budget.
+- **Outdated (October 2026):** Container Insights uses Azure Monitor Agent (`ama-logs` Pods);
+  recommended schema is `ContainerLogV2`. Application Insights Node.js 3.x uses OpenTelemetry;
+  React deprecated `ReactDOM.render` in React 18.
+
+## 10. Service mesh
+
+### 10.1 An injection label ignored by the add-on
+
+- **Symptom:** after `az aks mesh enable`, namespace label `istio-injection=enabled` and docs
+  claiming implemented Pod mTLS.
+- **Cause:** AKS Istio add-on needs revision label `istio.io/rev=asm-X-Y`; it ignores the generic
+  injection label.
+- **Fix:** none recorded, nor was a sidecar verification recorded.
+- **Recommendation:** read `az aks show --query 'serviceMeshProfile.istio.revisions'`, label,
+  `kubectl rollout restart` and confirm `istio-proxy` before claiming mTLS.
+  Plan canary revision upgrades.
+
+### 10.2 Upstream Istio examples applied to the add-on
+
+- **Symptom:** `svc/istio-ingressgateway` commands and Gateway selector `istio: ingressgateway`,
+  while the add-on publishes `aks-istio-ingressgateway-external` in `aks-istio-ingress`.
+  Only the roadmap STRICT example used that selector; the notes said Telemetry API was unsupported.
+- **Cause:** copied upstream examples.
+- **Fix:** none recorded.
+- **Recommendation:** treat the add-on as a separate product: check AKS names, labels and limitations;
+  use `istioctl analyze` against `aks-istio-system`.
+- **Outdated (October 2026):** separate Pilot/Citadel/Galley predates istiod (2020);
+  `consecutive5xxErrors` replaced `consecutiveErrors`; `istioctl authn tls-check` no longer exists.
+
+### 10.3 PERMISSIVE for ingress outside the mesh
+
+- **Symptom:** PERMISSIVE accepted NGINX/gateway traffic without sidecars; sample
+  `mtls-strict.yaml` actually applied PERMISSIVE.
+- **Cause:** ingress was outside the mesh.
+- **Fix:** none; STRICT remained on the roadmap.
+- **Recommendation:** assess mesh value on a small cluster, accounting for every sidecar's
+  CPU/memory. If retained, use mesh-gateway ingress and namespace STRICT, testing the transition.
+
+## 11. GitOps
+
+### 11.1 Two deployment paths
+
+- **Symptom:** a workflow used `kubectl apply`; `kubectl delete pods -n dx02 --all` pulled `latest`;
+  an Argo CD Application with `prune`/`selfHeal` also owned dx02 manifests.
+- **Cause:** GitOps added without removing imperative deployment.
+- **Fix:** none recorded.
+- **Recommendation:** one resource owner: CI publishes an image and updates Git tag/digest;
+  Argo CD synchronizes and rollback uses `git revert`.
+
+### 11.2 Exposed, unpinned Argo CD
+
+- **Symptom:** HTTP LoadBalancer `argocd-server` with public IP; input-supplied admin password;
+  GitHub webhook at `http://<PUBLIC_IP>/api/webhook`; v2.13.3 installation manifest and `latest` CLI.
+- **Cause:** focus on getting the UI working.
+- **Fix:** none recorded.
+- **Recommendation:** no public IP (port-forward, or Entra SSO behind TLS gateway); disable local
+  admin after SSO, pin versions, use HTTPS/secret webhook or polling.
+- **Outdated (October 2026):** Argo CD 2.x is unsupported; the current line was 3.x.
+
+## 12. Policies
+
+### 12.1 Gatekeeper without a path to deny
+
+- **Symptom:** three policies: labels/limits in `dryrun`, privileged containers in `deny`.
+  Audit found five Pods without limits; exclusions covered kube-system, gatekeeper-system and monitoring.
+- **Cause:** gradual rollout without an owner/deadline.
+- **Fix:** none recorded.
+- **Recommendation:** dated dryrun → warn → deny stages with reviewed explicit exclusions.
+  Chaos Mesh was absent from the exception list although its daemon is privileged; resolve before install.
+
+### 12.2 A nonfunctional NetworkPolicy example
+
+- **Symptom:** ingress selected namespace label `name: ingress-nginx`, absent by default;
+  egress targeted `app: sql-server` Pods while the database was external PaaS.
+- **Cause:** an untested generic example.
+- **Fix:** none recorded.
+- **Recommendation:** select namespaces with `kubernetes.io/metadata.name`; allow PaaS egress through
+  the private-endpoint subnet `ipBlock` and kube-dns DNS; test an ephemeral Pod before deny-all.
+
+## 13. Chaos engineering
+
+### 13.1 No hypothesis or measurement
+
+- **Symptom:** measurement queries (`http_requests_total`, `http_request_duration_seconds_bucket`)
+  needed unexposed app metrics. "all-experiments" combined Pod kill every two minutes, 200-ms
+  latency, 80% CPU and 256-MB memory stress in `prd` for ten minutes.
+- **Cause:** tool selected before hypothesis/SLI.
+- **Fix:** none recorded.
+- **Recommendation:** written hypothesis, measured SLI, one failure at a time, abort criterion,
+  and a nonproduction environment.
+
+### 13.2 Chaos Mesh prerequisites and zero-cost claims
+
+- **Symptom:** reinstall failed with `CRDs already exist`; dry-run installed Chaos Mesh even
+  without experiments; suggested subscription Contributor for Chaos Studio 403; cost called zero.
+- **Cause:** incomplete cleanup, privilege shortcuts and ignored resource use.
+- **Fix:** `helm uninstall`, delete chaos-mesh namespace and CRDs before reinstall.
+- **Recommendation:** AKS uses containerd; configure `chaosDaemon.runtime=containerd` and
+  `chaosDaemon.socketPath=/run/containerd/containerd.sock`. Each privileged node daemon consumes
+  CPU/memory and needs an explicit policy exception.
+
+## 14. Backup and recovery
+
+### 14.1 DR based on a false premise
+
+- **Symptom:** westus2 database called built-in geographic redundancy, relying on geo restore,
+  while creation instructions selected locally redundant backup storage.
+- **Cause:** offer-imposed region mistaken for a DR design.
+- **Fix:** none recorded.
+- **Recommendation:** geo restore requires geo-redundant backup storage. Design, test and measure
+  DR (observed RTO/RPO, not copied targets).
+
+### 14.2 Backing up nonexistent resources
+
+- **Symptom:** configurable 7–30-day PITR for Basic database; planned snapshots of nonpersistent
+  Prometheus/Grafana PVs; restore PV used in-tree `azureDisk`; instructions waited for a weekly first full.
+- **Cause:** generic document not checked against deployment.
+- **Fix:** none recorded.
+- **Recommendation:** inspect each actual resource. Basic supports at most seven days PITR;
+  the first full is scheduled soon after database creation; restore disks with CSI
+  (`disk.csi.azure.com`) PVs.
+- **Outdated (October 2026):** Kubernetes 1.27 removed the in-tree `azureDisk` plugin.
+
+### 14.3 State restore used wrong names
+
+- **Symptom:** restore commands named different container/blob than the backend, listed snapshots
+  instead of versions, and promised 30-day soft delete while bootstrap configured seven days.
+- **Cause:** commands written without reading backend configuration.
+- **Fix:** none recorded.
+- **Recommendation:** derive commands from `backend`, configure bootstrap versioning/soft delete,
+  and rehearse state restore once per lab cycle.
+
+## 15. Security scanning
+
+### 15.1 Unpinned tools and actions
+
+- **Symptom:** `aquasecurity/trivy-action@master`,
+  `SonarSource/sonarcloud-github-action@master`, tfsec, `owasp/zap2docker-stable` and
+  scanner `-Dsonar.login`.
+- **Cause:** copied shortest-reference examples.
+- **Fix:** none recorded.
+- **Recommendation:** commit-SHA actions with Dependabot updates; image/IaC Trivy, Checkov and
+  gitleaks in credential-free CI.
+- **Outdated (October 2026):** tfsec merged into Trivy (`trivy config`); SonarCloud became
+  SonarQube Cloud; recommended action is `SonarSource/sonarqube-scan-action` with `sonar.token`
+  instead of `sonar.login`. ZAP image became `ghcr.io/zaproxy/zaproxy:stable`.
+
+### 15.2 Scans that blocked nothing
+
+- **Symptom:** trivy-action omitted `exit-code` (default 0), despite promised deployment blocking.
+  tx02 had security rating C and 0% reviewed SonarCloud hotspots. Static "Quality Gate Passed"
+  badges appeared while the gate was "Not computed". An IaC guide ignored TLS 1.0 as a free-tier limitation.
+- **Cause:** reporting tools mistaken for gates.
+- **Fix:** none recorded.
+- **Recommendation:** build, scan with `exit-code: 1`, then push; fail on HIGH/CRITICAL.
+  Dynamic badges, required quality-gate checks, technically justified time-bounded ignores.
+
+### 15.3 Fixes that introduce another problem
+
+- **Symptom:** blank page fixed by Helmet `contentSecurityPolicy: false`; NGINX
+  `configuration-snippet` headers including `X-XSS-Protection`; `git filter-branch` for a
+  historic secret; DAST targeted a public HTTP IP.
+- **Cause:** treating the immediate symptom.
+- **Fix:** CSP remained disabled.
+- **Recommendation:** on HTTP-only sites Helmet's default `upgrade-insecure-requests` commonly
+  causes blank pages: adjust that directive rather than disabling CSP. Rotate leaked credentials
+  first, then clean history with `git filter-repo`; target the TLS hostname for DAST.
+- **Outdated (October 2026):** `X-XSS-Protection` is obsolete in browsers; images used
+  `node:18-alpine` (EOL April 2025) and `node:20` (EOL April 2026).
+
+## 16. Cleanup and orphaned resources
+
+### 16.1 Destroy cannot reach resources Terraform did not create
+
+- **Symptom:** security workflow created gateway/WAF/public IP/subnet outside Terraform;
+  portal database entered state only if `|| true` import worked; Services created IPs/LBs in
+  `MC_<RG>_<AKS>_<REGION>`; Chaos Mesh CRDs remained. Guidance was destroy before each new apply
+  or `az group delete --name <RG> --yes --no-wait`.
+- **Cause:** multiple infrastructure owners.
+- **Fix:** destroy and manual resource-group deletion.
+- **Recommendation:** Terraform or GitOps creates everything; afterward check `az group list`
+  and `az resource list` filtered by lab tag, including IPs, disks, snapshots, private DNS zones,
+  workspaces and Azure's automatically created NetworkWatcherRG.
+
+### 16.2 Asynchronous deletion and retained names
+
+- **Symptom:** `--no-wait` returned before deletion finished; SQL server name remained reserved for
+  5–10 minutes; dynamic DNS retained the old IP until manually updated.
+- **Cause:** asynchronous operations and post-delete name retention.
+- **Fix:** wait and retry manually.
+- **Recommendation:** `az group wait --name <RG> --deleted` before leftover checks; account for
+  name-retaining soft delete (Key Vault, Log Analytics workspace) in recreation plans.
+  Destroy DNS records to avoid dangling references.
+
+## 17. Cost figures from the notes
+
+Historical reference estimates (December 2025 to January 2026), not a current budget.
+
+| Item | Figure in the notes |
+|---|---|
+| AKS, two Standard_D2s_v3 nodes | about US$150/month |
+| PostgreSQL Standard_D2s_v3, planned but never created | about US$100/month |
+| Basic Load Balancer | about US$20/month |
+| State storage | US$0.01–2/month depending on guide |
+| Base total in AKS mode | about US$272/month; VM mode about US$30/month |
+| January plan: three Standard_B2s nodes | US$30–50/month |
+| January plan: network and Private Endpoint | US$5–10/month and US$3–5/month |
+| January plan: declared total | US$38–65/month, pricing AKS control plane, PostgreSQL B1ms and ACR Basic at US$0 |
+| Two-instance Application Gateway WAF_v2 | base about US$246/month, US$0.008/GB processed, average US$250–350/month |
+| Gateway public IP | about US$4/month |
+| Application Gateway Standard_v2 without WAF | about US$125/month |
+| ingress-nginx LoadBalancer | US$20–30/month |
+| Log Analytics | 5 GB/month free; US$2.30/GB; extra retention US$0.10/GB/month |
+| Estimated logs, about 24 GB/month | about US$44/month, or US$20–40 with filters |
+| Application Insights, 50% sampling, about 2.2 GB/month | declared US$0; availability test US$1.20/test/month; multistep US$4.80/test/month |
+| Azure SQL Basic, backup included | about US$5/month |
+| SQL LTR, about 20 GB | about US$0.50/month (US$0.02/GB) |
+| Disk snapshots, 50 GB | about US$2.50/month (US$0.05/GB) |
+| Chaos Mesh | US$0 plus about US$5/month logs |
+| Free Trial credit | R$1,078.95 (about US$200) for 30 days, estimated 25 AKS-mode days |
+| Azure SQL free offer | 100,000 vCore-seconds/month |
+
+Still-relevant lessons: credit ran out in weeks; WAF ingress cost as much as or more than the
+remaining lab; ACR Basic is billed daily, not free; Basic Load Balancer/public IP retired on
+2025-09-30.
+
+The v2 largest item is Application Gateway for Containers with WAF: about US$0.28/hour
+(Azure Retail Prices API, eastus, 2026-10-11), assuming one frontend, one association and roughly
+one capacity unit, or about US$204/month if left running continuously.

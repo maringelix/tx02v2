@@ -8,6 +8,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Documentation
 
+- Correct the security description of existing AGC plaintext edge exceptions: web:8080, API:3000 and temporary ACME solver:8089 are workload-scoped PERMISSIVE paths restricted by delegated-subnet authorization/NetworkPolicy; other ports remain STRICT. No policy behavior changed.
+
 - Translate all public documentation and historical evidence into English, adopt canonical English filenames, and link the central getting-started guide. Correct Azure onboarding to the current bootstrap, protected workflows, FinOps inputs, signed-image publication/promotion, and full-profile DNS/backup prerequisites.
 - Replace the bilingual README gate with English status/onboarding coverage while preserving existing structure and honesty checks.
 

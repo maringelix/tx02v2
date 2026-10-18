@@ -231,7 +231,7 @@ Local uses DB_SSL_MODE=disable.
   rules must not block smoke; any added rate limit must be >=300 requests/minute/client.
 - Azure NetworkPolicies allow AGC subnet → web:8080/API:3000; full allows only
   AGC subnet → temporary ACME solver:8089 for renewal. API egress PostgreSQL
-  subnet:5432 and DNS. mTLS permits AGC plaintext only at solver port 8089.
+  subnet:5432 and DNS. Namespace mTLS is STRICT; workload-specific PERMISSIVE exceptions allow AGC HTTP on web:8080, API:3000 and temporary solver:8089. Source-IP authorization and Cilium NetworkPolicies restrict this plaintext edge path to the delegated AGC subnet; other ports, including metrics:9464, remain STRICT.
 - PostgreSQL Flexible 17, port 5432, private delegated subnet/DNS,
   require_secure_transport=on, TLS >=1.2.
 

@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Documentation
+
+- Translate all public documentation and historical evidence into English, adopt canonical English filenames, and link the central getting-started guide. Correct Azure onboarding to the current bootstrap, protected workflows, FinOps inputs, signed-image publication/promotion, and full-profile DNS/backup prerequisites.
+- Replace the bilingual README gate with English status/onboarding coverage while preserving existing structure and honesty checks.
+
 ### Fixed
 
 - Cloud-readiness audit: full standby ACME rendering now accepts only the exact primary or
@@ -62,7 +67,7 @@ All notable changes to this project are documented here. The format follows
 - Cloud contract version 3 previously added ambient and Gatekeeper namespace labels, GitOps and
   backup semantics. The separate local contract remains version 2.
 - The full profile's image promotion, SLO, storage, waypoint and public TLS requirements are
-  documented in `docs/CONTRATO.md`.
+  documented in `docs/CONTRACT.md`.
 
 ### Security
 
@@ -116,11 +121,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
-- Comments, script messages and docs say "the contract" or point to `docs/CONTRATO.md` instead of
+- Comments, script messages and docs say "the contract" or point to `docs/CONTRACT.md` instead of
   "contract v1": the contract has been at version 2 since round 1 (roadmap S.8); the README says that HTTPS on the gateway listener is outside contract v2.
 - The family table of both READMEs links the family hub `tx00v2` (roadmap, family guardrails,
   cross-repo checks).
-- `docs/GUARDRAILS.md` and `docs/ARQUITETURA.md` no longer say that the end-to-end run of the local
+- `docs/GUARDRAILS.md` and `docs/ARCHITECTURE.md` no longer say that the end-to-end run of the local
   lab is pending: the CI job `e2e` runs it on every pull request.
 - `scripts/repo-guardrails.sh` also turns issues on (the issue forms) and requires approval for
   workflow runs from forks of external contributors; the reviewer of the `lab` environment is the gh
@@ -174,7 +179,7 @@ All notable changes to this project are documented here. The format follows
   `observability/opentelemetry-collector`) with the new built-in role `Monitoring Metrics Publisher`
   on that resource only: a role widening of `modules/role-ids` that also changes the ABAC condition of
   `tx02v2-gha-apply` (re-apply the bootstrap). Ingestion is billed per GB, capped by
-  `log_daily_quota_gb` (docs/CUSTOS.md). `platform/uninstall.sh` removes the release; tests and the
+  `log_daily_quota_gb` (docs/COSTS.md). `platform/uninstall.sh` removes the release; tests and the
   `contract-platform`/`helm-template` checks cover the identity, role, resource, namespace, service
   account, exporter and digest.
 - `FORK.md`: forking the lab step by step (what GitHub does not copy to a fork, the repository
@@ -183,7 +188,7 @@ All notable changes to this project are documented here. The format follows
 - The devcontainer has Docker-in-Docker, so `make e2e` runs inside it (verified locally with
   `LOCAL_PROFILE=core`), and declares 4 CPUs and 8 GB; the harness checks that devcontainer features
   are pinned by digest.
-- The local lab (docs/LAB_LOCAL.md), ported from tx01v2: the whole v1 platform on Docker, with no
+- The local lab (docs/LOCAL_LAB.md), ported from tx01v2: the whole v1 platform on Docker, with no
   cloud account. `make e2e` verified locally and in CI (26 probes, destroy with no leftovers).
   - `terraform/envs/local` (providers docker 4.6.0, tls 4.4.1, random 3.9.1): network
     `tx02v2-local` (`10.251.0.0/24`), kind 1.36 cluster, emulated ACR (registry 3.1.2, push to
@@ -209,7 +214,7 @@ All notable changes to this project are documented here. The format follows
     sync and self-heal, policy denials, vulnerability reports, backup/restore drill, chaos experiment
     with a hypothesis).
   - `scripts/local-lab.sh` (up, down, check, e2e, kubeconfig, status) and
-    `scripts/leftovers-local.sh`; local contract `lab-system/lab-contract` (docs/CONTRATO.md).
+    `scripts/leftovers-local.sh`; local contract `lab-system/lab-contract` (docs/CONTRACT.md).
   - Harness: checks `local-versions`, `helm-template-local`, `kubeconform-local`, `policy-gator`,
     `terraform-validate:envs/local`, `terraform-test:envs/local`; stage `e2e` (`local-lab-e2e`,
     `make e2e`) and the CI job `e2e`; tools kind 0.33.0 and gator 3.23.1. `policy-terraform` allows
@@ -225,7 +230,7 @@ All notable changes to this project are documented here. The format follows
 ### Added (first v2)
 
 - Initial v2 of the Azure infrastructure lab, rebuilt from scratch with the lessons of v1
-  (docs/ARQUITETURA.md, "v1 → v2"):
+  (docs/ARCHITECTURE.md, "v1 → v2"):
   - `terraform/bootstrap`: resource provider registrations, hardened state storage account (Entra ID
     only, versioning, soft delete, `CanNotDelete` lock), the `tx02v2-lab` resource group, the
     contract identities `tx02v2-gha-plan`, `tx02v2-gha-apply` and `dx02v2-gha-deploy` with GitHub
@@ -259,15 +264,15 @@ All notable changes to this project are documented here. The format follows
   - `scripts/leftovers.sh` to find billable or orphaned leftovers after a destroy.
   - Brazilian Portuguese docs: architecture, contract v1, runbook, costs (Azure Retail Prices API,
     2026-10-11), guardrails, harness, sustainment, publication checklist, and
-    `docs/LICOES_APRENDIDAS.md` (sanitized lessons learned from the Azure v1 lab, December 2025 –
+    `docs/LESSONS_LEARNED.md` (sanitized lessons learned from the Azure v1 lab, December 2025 –
     January 2026).
 
 ### Changed (after the first push)
 
 - The CI (`static`, `test`) ran green on GitHub: the README status matrix now says `verified in CI`
-  for those rows; AGENTS.md and docs/SUSTENTACAO.md follow.
+  for those rows; AGENTS.md and docs/MAINTENANCE.md follow.
 - The README family table and AGENTS.md link the Google Cloud pair (`tx03v2`, `dx03v2`), now public.
 
 ## R10: capacidade e FinOps
 
-- OpenCost/VPA Off, carga/HPA/PDB e kind HA; orçamento/expiração e Spot opcionais. Prova pesada no CI; nada executado na nuvem (v2).
+- OpenCost/VPA Off, load/HPA/PDB and HA kind; optional budget/expiration and Spot. Heavy evidence runs in CI; nothing in v2 has run in the cloud.

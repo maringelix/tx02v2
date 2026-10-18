@@ -61,7 +61,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "dr_sql_from_primary" {
   tags                 = local.tags
 }
 
-# tflint-ignore: azurerm_resources_missing_prevent_destroy # disposable DR lab; teardown is mandatory (docs/CONTINUIDADE.md)
+# tflint-ignore: azurerm_resources_missing_prevent_destroy # disposable DR lab; teardown is mandatory (docs/CONTINUITY.md)
 resource "azurerm_postgresql_flexible_server" "replica" {
   count                         = var.postgres_profile == "dr" ? 1 : 0
   name                          = "${local.postgres_name_prefix}-dr-postgres"

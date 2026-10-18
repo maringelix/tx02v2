@@ -16,7 +16,7 @@
 # one layer per round (scripts/local-lab.sh e2e destroys the lab at the end).
 # LOCAL_SIZE sizes every layer (default default): small adds platform/local/values/small/<chart>.yaml
 # (smaller requests and limits, short retention, fewer workers), so the full profile and the app of
-# dx02v2 fit in 7 GB of Docker memory (docs/LAB_LOCAL.md, measured). The components stay the same.
+# dx02v2 fit in 7 GB of Docker memory (docs/LOCAL_LAB.md, measured). The components stay the same.
 # LOCAL_SLACK_WEBHOOK_URL (optional, an https Slack incoming webhook): Alertmanager also posts warning
 # and critical alerts there; without it the Slack receiver posts to the in-cluster sink.
 # LOCAL ONLY: it never talks to Azure. Needs kubectl, helm, terraform and curl (scripts/install-tools.sh),
@@ -161,7 +161,7 @@ install_external_secrets() {
   kubectl wait --for=condition=Ready clustersecretstore/local-secrets --timeout=180s >/dev/null
 }
 
-# Contract of the local lab (docs/CONTRATO.md, "Lab local"): what the dx02v2 local deploy reads, like
+# Contract of the local lab (docs/CONTRACT.md, "Lab local"): what the dx02v2 local deploy reads, like
 # the App Configuration keys tx02v2/lab/* in the cloud.
 publish_contract() {
   local ca="$WORK_DIR/ca.crt"

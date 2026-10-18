@@ -1,7 +1,7 @@
 # Remote state of the lab root: one private container in a hardened StorageV2 account.
 # Locking uses blob leases (azurerm backend). Shared keys are disabled, so every access needs an
 # Entra ID identity with a Storage Blob Data role on the container: the subscription Owner has
-# no data actions and gets Storage Blob Data Contributor below (docs/ARQUITETURA.md).
+# no data actions and gets Storage Blob Data Contributor below (docs/ARCHITECTURE.md).
 
 # tflint-ignore: azurerm_resources_missing_prevent_destroy # protected by the CanNotDelete lock below, which state_protection_lock = false removes for the final teardown
 resource "azurerm_storage_account" "state" {

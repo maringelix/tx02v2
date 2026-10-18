@@ -59,7 +59,7 @@ run "plan_identity_is_read_only" {
       "reader"            = "Reader@/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab"
       "state-blob-reader" = "Storage Blob Data Reader@/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-bootstrap/providers/Microsoft.Storage/storageAccounts/tx02v2tfstateb602d594/blobServices/default/containers/tfstate"
     }
-    error_message = "tx02v2-gha-plan gets Reader on the lab and the state blob, nothing else: no data plane (docs/ARQUITETURA.md, ADR 14)."
+    error_message = "tx02v2-gha-plan gets Reader on the lab and the state blob, nothing else: no data plane (docs/ARCHITECTURE.md, ADR 14)."
   }
 
   assert {

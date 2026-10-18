@@ -41,7 +41,7 @@ run "defaults_are_lab_friendly" {
       var.agc_subnet_cidr == "10.20.4.0/24" && var.postgres_subnet_cidr == "10.20.5.0/24" &&
       var.pod_cidr == "10.244.0.0/16" && var.service_cidr == "10.0.0.0/16" && var.dns_service_ip == "10.0.0.10"
     )
-    error_message = "Network defaults changed: update docs/CONTRATO.md and dx02v2 together."
+    error_message = "Network defaults changed: update docs/CONTRACT.md and dx02v2 together."
   }
 
   assert {
@@ -112,7 +112,7 @@ run "contract_keys_in_app_configuration" {
       "waf/policy-id"               = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.Network/applicationGatewayWebApplicationFirewallPolicies/tx02v2-lab-waf"
       "deploy/principal-id"         = "dddddddd-dddd-dddd-dddd-dddddddddddd"
     }
-    error_message = "Contract values must come from the modules and match docs/CONTRATO.md."
+    error_message = "Contract values must come from the modules and match docs/CONTRACT.md."
   }
 
   assert {

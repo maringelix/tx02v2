@@ -4,7 +4,6 @@ Azure infrastructure half of a DevOps lab: Terraform, AKS, PostgreSQL Flexible S
 
 [![ci](https://github.com/maringelix/tx02v2/actions/workflows/ci.yml/badge.svg)](https://github.com/maringelix/tx02v2/actions/workflows/ci.yml)
 
-[Português](README.pt-BR.md)
 
 **Fork this lab:** [FORK.md](FORK.md) takes you from a fork to a running lab, on your machine first, then in your own cloud account.
 
@@ -23,7 +22,7 @@ The lab family (v2):
 | [`tx01v2`](https://github.com/maringelix/tx01v2) | AWS | infrastructure (Terraform, EKS, RDS, platform layer) | see its status matrix |
 | [`dx01v2`](https://github.com/maringelix/dx01v2) | AWS | application | see its status matrix |
 | `tx02v2` (this repo) | Azure | infrastructure (Terraform, platform layer) | see status matrix |
-| [`dx02v2`](https://github.com/maringelix/dx02v2) | Azure | application (sibling of this repo, built against `docs/CONTRATO.md`) | see its status matrix |
+| [`dx02v2`](https://github.com/maringelix/dx02v2) | Azure | application (sibling of this repo, built against `docs/CONTRACT.md`) | see its status matrix |
 | [`tx03v2`](https://github.com/maringelix/tx03v2) | GCP | infrastructure (Terraform, GKE Autopilot, Cloud SQL, Cloud Armor) | see its status matrix |
 | [`dx03v2`](https://github.com/maringelix/dx03v2) | GCP | application (the dx01v2 app on GKE Autopilot) | see its status matrix |
 
@@ -35,19 +34,19 @@ The lab family (v2):
 | Lint and IaC security scan (tflint + azurerm ruleset, trivy HIGH/CRITICAL, plain and with the example inputs) | `verified in CI` | `make static` (`tflint`, `trivy-config`, `trivy-config-tfvars`) |
 | Workflows, scripts, platform manifests and Helm values (actionlint, shellcheck, kubeconform, helm template with the chart SHA256) | `verified in CI` | `make static` (`actionlint`, `shellcheck`, `kubeconform`, `helm-template`) |
 | Secret scan and repository policies (no real identifiers or GUIDs, pinned actions, contract tags on every taggable resource, scripts that act only on the lab, v1 regressions) | `verified in CI` | `make static` (`gitleaks`, `policy-*`, `repo-structure`, `version-consistency`) |
-| Contract v4 with dx02v2 (17 App Configuration keys, optional public DNS and ACME TLS, ambient, GitOps and Azure Blob backup) | `verified locally` | `make static`; [docs/CONTRATO.md](docs/CONTRATO.md) |
+| Contract v5 with dx02v2 (17 App Configuration keys, optional public DNS and ACME TLS, ambient, GitOps and Azure Blob backup) | `verified locally` | `make static`; [docs/CONTRACT.md](docs/CONTRACT.md) |
 | Terraform unit tests with a mocked azurerm provider (OIDC subjects, state account, ABAC role list = lab roles, budget, AKS, PostgreSQL, Key Vault, ACR, AGC + WAF, public DNS, Velero Blob, contract keys, role assignments, Application Insights with Entra ID ingestion only, negative validations) | `verified locally` | `make test`; CI job `test` |
-| R9 PostgreSQL HA/PITR and optional cross-region DR runtime, private replication and scoped identities | `Terraform mocks verified locally; not run in the cloud (v2)` | [Continuity runbook](docs/CONTINUIDADE.md), `tests/continuity.tftest.hcl` |
+| R9 PostgreSQL HA/PITR and optional cross-region DR runtime, private replication and scoped identities | `Terraform mocks verified locally; not run in the cloud (v2)` | [Continuity runbook](docs/CONTINUITY.md), `tests/continuity.tftest.hcl` |
 | Physical PostgreSQL base backup, corruption rejection and WAL/PITR recovery in Docker | `awaiting CI e2e` | `scripts/local/pitr-drill.sh`, `platform/local/check.sh` |
 | Bootstrap (resource providers, state account, lab resource group, GitHub OIDC identities, budget) | `not run in the cloud (v2)` | `terraform/bootstrap`, `docs/RUNBOOK.md` |
 | Lab apply (VNet, AKS 1.36, PostgreSQL 17, Key Vault, ACR, AGC + WAF, App Configuration contract) | `not run in the cloud (v2)` | `.github/workflows/terraform-apply.yml` |
 | Plan on pull requests | `not run in the cloud (v2)` | `.github/workflows/terraform-plan.yml` |
 | Platform layer (`core` or `full`): core controllers plus 16 pinned charts in full (ambient Istio, ACME, observability, Argo CD GitOps, Gatekeeper, Trivy, Velero Azure Blob, Chaos Mesh) | `not run in the cloud (v2)` | `.github/workflows/platform.yml`; `helm-template-full` renders every real pinned chart |
 | Destroy + leftover check | `not run in the cloud (v2)` | `.github/workflows/terraform-destroy.yml`, `scripts/leftovers.sh` |
-| Public DNS and HTTPS on AGC in the full profile (delegated domain required) | `implemented; not run in the cloud (v2)` | `terraform/envs/lab/dns.tf`, `platform/templates/edge-acme.yaml`, `docs/CONTRATO.md` |
+| Public DNS and HTTPS on AGC in the full profile (delegated domain required) | `implemented; not run in the cloud (v2)` | `terraform/envs/lab/dns.tf`, `platform/templates/edge-acme.yaml`, `docs/CONTRACT.md` |
 | Cloud audit regressions: primary/DR ACME targets, Collector core/full identity and Kubernetes image-policy mode | `verified locally; not run in the cloud (v2)` | `edge-acme`, `cloud-install`, `image-admission-policy`, `helm-template-full`; [limits](docs/HARNESS.md) |
-| Repository settings as code (ruleset, environment `lab`) | `verified locally` | `scripts/repo-guardrails.sh` applied; read back with `gh api` on 2026-10-14 (`docs/PUBLICACAO.md`) |
-| **Local lab, static checks**: `terraform/envs/local` plan tests (private network, labels, loopback-only registry, TLS-only database, digests, negative validations; 10 runs), 15 local charts by SHA256 rendering digests and ClusterIP only, Gatekeeper policies against their gator cases | `verified locally` | `terraform-test:envs/local`, `helm-template-local`, `kubeconform-local`, `policy-gator`, `local-versions` |
+| Repository settings as code (ruleset, environment `lab`) | `verified locally` | `scripts/repo-guardrails.sh` applied; read back with `gh api` on 2026-10-14 (`docs/PUBLISHING.md`) |
+| **Local lab, static checks**: `terraform/envs/local` plan tests (private network, labels, loopback-only registry, TLS-only database, digests, negative validations; 10 runs), 17 local charts by SHA256 rendering digests and ClusterIP only, Gatekeeper policies against their gator cases | `verified locally` | `terraform-test:envs/local`, `helm-template-local`, `kubeconform-local`, `policy-gator`, `local-versions` |
 | **Local lab** (Terraform on Docker): kind cluster + emulated ACR, PostgreSQL (TLS only), Blob Storage (S3 API emulator), load balancer, git server; destroy + leftover check | `verified in CI` | `make e2e` (`terraform/envs/local`, `scripts/local-lab.sh`) |
 | Service mesh: Istio 1.31 ambient, mTLS `STRICT`, identity-based `AuthorizationPolicy` | `verified in CI` | `make e2e` (`platform/local/check.sh`: allowed, other identity and plaintext probes) |
 | Gateway API on Istio behind the emulated load balancer, HTTPS with cert-manager (lab CA), HTTP → HTTPS | `verified in CI` | `make e2e` |
@@ -78,9 +77,9 @@ flowchart LR
   agc -->|AGC subnet /24| aks
   aks -->|TLS 5432| pg
   aks -->|External Secrets, Workload ID| kv["Key Vault"]
-  aks -->|AcrPull| acr["Container Registry"]
+  aks -->|Repository Reader| acr["Container Registry"]
   gha["GitHub Actions (OIDC)"] -->|plan / apply identities| arm["Azure Resource Manager"]
-  dx["dx02v2 deploy"] -->|App Configuration contract, AcrPush, RoleBinding| aks
+  dx["dx02v2 deploy"] -->|App Configuration contract, Repository Writer, RoleBinding| aks
 ```
 
 - `terraform/bootstrap`: resource provider registrations, the state storage account (Entra ID only,
@@ -90,7 +89,7 @@ flowchart LR
 - `terraform/envs/lab`: modules `network`, `aks`, `postgres`, `keyvault`, `acr`, `agc`, `appconfig`,
   the generated secrets (ephemeral, write-only) and the App Configuration keys dx02v2 reads.
 - `platform/`: Helm charts and manifests installed after the apply, never by Terraform.
-- Design decisions, the AWS ↔ Azure table and the v1 → v2 table: [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
+- Design decisions, the AWS ↔ Azure table and the v1 → v2 table: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Quick start (free, local)
 
@@ -129,19 +128,16 @@ make local-down     # destroy + leftover check
 | Full profile: Let's Encrypt certificate on AGC after public DNS delegation | cert-manager, ClusterIssuer `lab-ca` |
 | Key Vault + ESO (Workload ID) | Secrets of `lab-secrets` + ESO |
 | Blob Storage (backups) | Versity S3 Gateway (S3 API) |
-| App Configuration contract | ConfigMap `lab-system/lab-contract` (`docs/CONTRATO.md`) |
+| App Configuration contract | ConfigMap `lab-system/lab-contract` (`docs/CONTRACT.md`) |
 | GitHub (GitOps source) | Soft Serve git server |
 
-Details, probes and limits: [docs/LAB_LOCAL.md](docs/LAB_LOCAL.md) and
-[docs/ARQUITETURA.md](docs/ARQUITETURA.md). Deploying dx02v2 on top of it (through the local contract)
-is `planned` in dx02v2.
+Details, probes and limits: [docs/LOCAL_LAB.md](docs/LOCAL_LAB.md) and
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Deploying dx02v2 on top of it (through the local contract)
+is verified in CI in dx02v2.
 
 ## Cloud path (costs money)
 
-**Cost first:** about US$0.51 per hour in eastus2 with the defaults, US$0.39 without the WAF.
-Application Gateway for Containers with the WAF is the biggest item (US$0.279 per hour, about 54 %).
-A forgotten lab costs about US$12 per day, about US$374 per month. Reference list prices (Azure
-Retail Prices API, 2026-10-11): see [docs/CUSTOS.md](docs/CUSTOS.md) and the official calculator.
+**Cost first:** core reference is about USD0.534/hour with WAF, USD0.410 without; full with PVCs is about USD0.551/hour with WAF. AGC/WAF is the largest item (USD0.279/hour). Forgotten core costs about USD12.81/day or USD389/730 hours. These are historical reference estimates, not bills; see [docs/COSTS.md](docs/COSTS.md) for dates, assumptions and exclusions.
 Use a dedicated subscription, keep the budget alerts and destroy on the same day. On a Free Trial
 subscription, v1 found PostgreSQL Flexible Server blocked by offer restrictions
 ([docs/RUNBOOK.md](docs/RUNBOOK.md), section 1).
@@ -152,7 +148,7 @@ subscription Owner) → `cloud_run_report` issue.
 
 ### Full platform profile
 
-The `platform` workflow offers `core` and `full`. The full profile installs 15 charts pinned by version, package SHA256 and image digests. It includes ambient Istio, Prometheus, Alertmanager, Grafana, Loki, Alloy, Tempo, Collector, Argo CD GitOps, Gatekeeper, Trivy, Velero on private Azure Blob, and Chaos Mesh. Set `LAB_NODE_VM_SIZE=Standard_D2as_v5` and `LAB_NODE_COUNT=2` before apply for sizing. Costs and limits are in [docs/CUSTOS.md](docs/CUSTOS.md). The charts were rendered locally; Azure execution remains `not run in the cloud (v2)`.
+The `platform` workflow offers `core` and `full`. The full profile installs 16 charts pinned by version, package SHA256 and image digests. It includes ambient Istio, Prometheus, Alertmanager, Grafana, Loki, Alloy, Tempo, Collector, Argo CD GitOps, Gatekeeper, Trivy, Velero on private Azure Blob, and Chaos Mesh. Set `LAB_NODE_VM_SIZE=Standard_D2as_v5` and `LAB_NODE_COUNT=2` before apply for sizing. Costs and limits are in [docs/COSTS.md](docs/COSTS.md). The charts were rendered locally; Azure execution remains `not run in the cloud (v2)`.
 
 ## Harness
 
@@ -171,21 +167,21 @@ The `platform` workflow offers `core` and `full`. The full profile installs 15 c
 
 ## Docs
 
-All docs are in Brazilian Portuguese.
+All public documentation is in English. Start with the [central getting-started guide](https://github.com/maringelix/tx00v2/blob/main/docs/GETTING_STARTED.md).
 
 | Doc | Content |
 |---|---|
 | [FORK.md](FORK.md) | fork the lab: what GitHub does not copy, the local lab, your own cloud account |
-| [docs/ARQUITETURA.md](docs/ARQUITETURA.md) | diagram, ADRs, AWS ↔ Azure, v1 → v2 |
-| [docs/CONTRATO.md](docs/CONTRATO.md) | tx02v2 ⇄ dx02v2 contract v4 (source of truth) |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | diagram, ADRs, AWS ↔ Azure, v1 → v2 |
+| [docs/CONTRACT.md](docs/CONTRACT.md) | tx02v2 ⇄ dx02v2 contract v5 (source of truth) |
 | [docs/RUNBOOK.md](docs/RUNBOOK.md) | full cloud round |
-| [docs/LAB_LOCAL.md](docs/LAB_LOCAL.md) | the local lab: what is emulated, how to run it, probes, limits |
-| [docs/CUSTOS.md](docs/CUSTOS.md) | cost estimate per component, with and without the WAF |
+| [docs/LOCAL_LAB.md](docs/LOCAL_LAB.md) | the local lab: what is emulated, how to run it, probes, limits |
+| [docs/COSTS.md](docs/COSTS.md) | cost estimate per component, with and without the WAF |
 | [docs/GUARDRAILS.md](docs/GUARDRAILS.md) | rules, enforcement, exceptions, limits |
 | [docs/HARNESS.md](docs/HARNESS.md) | checks, strict mode, troubleshooting |
-| [docs/SUSTENTACAO.md](docs/SUSTENTACAO.md) | routines, end-of-support calendar, update procedures |
-| [docs/PUBLICACAO.md](docs/PUBLICACAO.md) | checklist to make the repository public |
-| [docs/LICOES_APRENDIDAS.md](docs/LICOES_APRENDIDAS.md) | lessons learned from the Azure v1 lab |
+| [docs/MAINTENANCE.md](docs/MAINTENANCE.md) | routines, end-of-support calendar, update procedures |
+| [docs/PUBLISHING.md](docs/PUBLISHING.md) | checklist to make the repository public |
+| [docs/LESSONS_LEARNED.md](docs/LESSONS_LEARNED.md) | lessons learned from the Azure v1 lab |
 
 ## Contributing
 
@@ -196,6 +192,6 @@ issues: [SECURITY.md](SECURITY.md).
 
 [MIT](LICENSE) — Copyright (c) 2025-2026 Bruno Maringeli.
 
-## R10: capacidade e FinOps
+## R10: capacity and FinOps
 
-Veja [FinOps e escala](docs/FINOPS.md) para kind HA, carga/HPA/PDB, OpenCost, VPA Off, Spot opt-in, preços regionais, orçamento/expiração e limpeza. Construção para fork; nada executado na nuvem (v2).
+See [FinOps and scaling](docs/FINOPS.md) for HA kind, load/HPA/PDB, OpenCost, VPA Off, opt-in Spot, regional rates, budget/expiration and cleanup. Built for forks; nothing in v2 has run in the cloud.

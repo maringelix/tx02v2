@@ -8,7 +8,7 @@ location = "eastus2"
 github_owner = "your-github-user"
 
 # Your public IP as /32. GitHub-hosted runners need 0.0.0.0/0 plus
-# allow_api_server_from_anywhere = true for the platform/deploy workflows (docs/ARQUITETURA.md).
+# allow_api_server_from_anywhere = true for the platform/deploy workflows (docs/ARCHITECTURE.md).
 api_server_authorized_ip_ranges = ["203.0.113.10/32"]
 allow_api_server_from_anywhere  = false
 
@@ -34,7 +34,7 @@ app_deployer_principal_ids = []
 # app_domain_name    = "lab.example.com"
 # acme_contact_email = "ops@example.com"
 
-# Lab-friendly defaults (change only if you know the cost impact, see docs/CUSTOS.md):
+# Lab-friendly defaults (change only if you know the cost impact, see docs/COSTS.md):
 # enable_waf                = true
 # node_vm_size              = "Standard_D2als_v6"
 # node_count                = 2
@@ -44,5 +44,5 @@ app_deployer_principal_ids = []
 # postgres_ha_sku          = "GP_Standard_D2ads_v5"
 # postgres_backup_retention_days = 7
 # postgres_geo_backup      = false # changing after creation replaces the server
-# postgres_delete_lock     = false # requires operator lock permissions; docs/CONTINUIDADE.md
+# postgres_delete_lock     = false # requires operator lock permissions; docs/CONTINUITY.md
 # dr_location              = "centralus" # paired with eastus2 in the DR recipe

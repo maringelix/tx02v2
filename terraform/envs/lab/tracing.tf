@@ -2,7 +2,7 @@
 # observability, platform/install.sh) writes the spans of dx02v2 to this Application Insights resource.
 # Ingestion needs a Microsoft Entra token: local authentication (the instrumentation key alone) is off,
 # so the connection string that install.sh reads is an address, not a secret. Billing is the Log
-# Analytics ingestion per GB (docs/CUSTOS.md); the daily caps bound it.
+# Analytics ingestion per GB (docs/COSTS.md); the daily caps bound it.
 
 resource "azurerm_log_analytics_workspace" "traces" {
   name                         = "${local.name}-traces"

@@ -2,7 +2,7 @@
 # restore of Kubernetes resources to the S3 emulator of terraform/envs/local, the local twin of Blob
 # Storage. The emulator speaks the S3 API, so only the local lab uses the AWS (S3) plugin of Velero; in
 # Azure the twin would be the Azure plugin against Blob Storage (`planned`). (v1 exported Secrets in
-# base64 to a CI artifact and never restored; docs/LICOES_APRENDIDAS.md). install.sh passes the bucket,
+# base64 to a CI artifact and never restored; docs/LESSONS_LEARNED.md). install.sh passes the bucket,
 # the endpoint and the credentials Secret. Images pinned by digest (verified 2026-10-12).
 image:
   repository: docker.io/velero/velero

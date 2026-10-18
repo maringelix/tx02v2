@@ -1,4 +1,4 @@
-# What the deploy role of dx02v2 may do in Argo CD (docs/CONTRATO.md): read the Application dx02v2 and
+# What the deploy role of dx02v2 may do in Argo CD (docs/CONTRACT.md): read the Application dx02v2 and
 # ask it to refresh (an annotation), nothing else and nothing in any other Application. AKS identifies
 # the deploy principal as a User, so this RoleBinding receives the rendered User subjects.
 apiVersion: rbac.authorization.k8s.io/v1

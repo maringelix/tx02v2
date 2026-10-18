@@ -5,9 +5,9 @@
 #
 # Soft delete cannot be disabled (7 days here, the minimum); purge protection stays off so a
 # deleted vault can be purged and its name reused. Purging needs a subscription-level permission
-# the CI identities do not have: docs/ARQUITETURA.md ("A armadilha do soft delete").
+# the CI identities do not have: docs/ARCHITECTURE.md ("A armadilha do soft delete").
 
-# tflint-ignore: azurerm_resources_missing_prevent_destroy # lab data is disposable: every round ends with terraform destroy (docs/ARQUITETURA.md)
+# tflint-ignore: azurerm_resources_missing_prevent_destroy # lab data is disposable: every round ends with terraform destroy (docs/ARCHITECTURE.md)
 resource "azurerm_key_vault" "this" {
   name                       = var.name
   location                   = var.location
@@ -20,7 +20,7 @@ resource "azurerm_key_vault" "this" {
 
   # Public endpoint on purpose: GitHub-hosted runners (Terraform writes the secrets) and External
   # Secrets in AKS (egress through the AKS load balancer IP) reach it. Every data-plane request
-  # still needs an Entra ID token and an RBAC role on the vault (docs/ARQUITETURA.md).
+  # still needs an Entra ID token and an RBAC role on the vault (docs/ARCHITECTURE.md).
   public_network_access_enabled = true
 
   network_acls {
@@ -32,7 +32,7 @@ resource "azurerm_key_vault" "this" {
 }
 
 # Contract: JSON with string values username, password, host, port, dbname.
-# tflint-ignore: azurerm_resources_missing_prevent_destroy # lab data is disposable: every round ends with terraform destroy (docs/ARQUITETURA.md)
+# tflint-ignore: azurerm_resources_missing_prevent_destroy # lab data is disposable: every round ends with terraform destroy (docs/ARCHITECTURE.md)
 resource "azurerm_key_vault_secret" "db" {
   count            = var.manage_values ? 1 : 0
   name             = "${var.name_prefix}-db-app"
@@ -44,7 +44,7 @@ resource "azurerm_key_vault_secret" "db" {
 }
 
 # Contract: plain string, 48 random alphanumeric characters.
-# tflint-ignore: azurerm_resources_missing_prevent_destroy # lab data is disposable: every round ends with terraform destroy (docs/ARQUITETURA.md)
+# tflint-ignore: azurerm_resources_missing_prevent_destroy # lab data is disposable: every round ends with terraform destroy (docs/ARCHITECTURE.md)
 resource "azurerm_key_vault_secret" "admin_token" {
   count            = var.manage_values ? 1 : 0
   name             = "${var.name_prefix}-app-admin-token"

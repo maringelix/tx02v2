@@ -1,4 +1,4 @@
-# Cross-repo contract (docs/CONTRATO.md): the values dx02v2 and platform/install.sh read from App
+# Cross-repo contract (docs/CONTRACT.md): the values dx02v2 and platform/install.sh read from App
 # Configuration (prefix tx02v2/lab/, no label). None of them is a secret.
 
 locals {

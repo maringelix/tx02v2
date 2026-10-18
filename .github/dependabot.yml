@@ -1,10 +1,10 @@
 # Monthly dependency PRs: minor + patch grouped per ecosystem, majors one by one.
-# Review procedure: AGENTS.md (Dependency updater) and docs/SUSTENTACAO.md.
+# Review procedure: AGENTS.md (Dependency updater) and docs/MAINTENANCE.md.
 # Harness tools (tools/), the platform charts and image digests (platform/versions.env,
 # platform/values) and the devcontainer image are updated by hand in the quarterly routine
 # (scripts/update-tool-checksums.sh; they must change together, check version-consistency).
 # The ignore rules below exist because those ranges are constrained elsewhere: review them in the
-# quarterly routine (docs/SUSTENTACAO.md).
+# quarterly routine (docs/MAINTENANCE.md).
 version: 2
 updates:
   - package-ecosystem: github-actions

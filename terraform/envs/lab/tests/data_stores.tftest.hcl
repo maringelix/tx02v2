@@ -189,7 +189,7 @@ run "key_vault_and_secrets" {
       azurerm_key_vault.this.network_acls[0].default_action == "Allow" &&
       azurerm_key_vault.this.network_acls[0].bypass == "AzureServices"
     )
-    error_message = "Public endpoint on purpose (GitHub-hosted runners and AKS egress), documented in docs/ARQUITETURA.md."
+    error_message = "Public endpoint on purpose (GitHub-hosted runners and AKS egress), documented in docs/ARCHITECTURE.md."
   }
 
   assert {

@@ -9,8 +9,7 @@ specific to the app.
 What is proven, and how, is in the [status matrix](README.md#status-matrix). In short: the harness
 and the local lab are `verified in CI`; the cloud path of v2 is `not run in the cloud (v2)`. If you
 run it in Azure you are one of its first tests: follow [docs/RUNBOOK.md](docs/RUNBOOK.md) step by
-step and report what happened (step 8). Most documents under `docs/` are in Brazilian Portuguese;
-this page, the README, AGENTS.md and CONTRIBUTING.md are in English.
+step and report what happened (step 8). All public documentation is in English. Follow the [central getting-started guide](https://github.com/maringelix/tx00v2/blob/main/docs/GETTING_STARTED.md) for the full fork-to-cloud sequence.
 
 ## What a fork does not bring along
 
@@ -22,7 +21,7 @@ GitHub copies the code and its history, nothing else:
 | Running workflows: a fork keeps its workflows disabled until you enable them, and scheduled workflows stay off in a fork | step 2 |
 | Issues: they start disabled in a fork | step 3 turns them on (the bug report and cloud run report forms) |
 | Dependabot: security updates start disabled; version updates do not run in a fork by default | step 3 turns security updates on; version bumps arrive when you sync (step 9) |
-| Repository variables and secrets | the lab never needs a secret; the cloud path needs variables (step 7) |
+| Repository variables and secrets | local lab needs no cloud credentials; cloud setup needs variables and operator secrets (step 7) |
 
 A fork of a public repository is public, and so are its workflow logs.
 
@@ -72,14 +71,14 @@ HARNESS_STRICT=1 make verify   # static checks and terraform test: what the CI j
 make e2e                       # the whole local lab: apply, platform, 34 probes, destroy
 ```
 
-`make e2e` builds the platform of [docs/LAB_LOCAL.md](docs/LAB_LOCAL.md) on Docker: a kind cluster
+`make e2e` builds the platform of [docs/LOCAL_LAB.md](docs/LOCAL_LAB.md) on Docker: a kind cluster
 with an emulated container registry, PostgreSQL (TLS only), object storage (an S3 API emulator in
 place of Blob Storage), load balancer and git server, then Istio ambient, cert-manager, External
 Secrets, Prometheus/Alertmanager/Grafana, Loki/Alloy, Argo CD, Gatekeeper, Trivy Operator, Velero and
 Chaos Mesh. It proves each piece with real traffic and always destroys the lab, also after a failure.
 It needs about 8 GB of memory for Docker and takes 20-40 minutes on a laptop (about 10 in CI): run
 one lab at a time. With 7 GB, `LOCAL_SIZE=small` installs the same platform with smaller limits
-and short retention (proved with the app of dx02v2, [docs/LAB_LOCAL.md](docs/LAB_LOCAL.md)). To keep
+and short retention (proved with the app of dx02v2, [docs/LOCAL_LAB.md](docs/LOCAL_LAB.md)). To keep
 the lab up while you study it:
 
 ```bash
@@ -110,19 +109,15 @@ of your `dx02v2` fork clone your `tx02v2` (its FORK.md, step 5).
 
 Before the first apply:
 
-- Read the [cost section of the README](README.md#cloud-path-costs-money) and [docs/CUSTOS.md](docs/CUSTOS.md) (reference
+- Read the [cost section of the README](README.md#cloud-path-costs-money) and [docs/COSTS.md](docs/COSTS.md) (reference
   prices: check the current ones). Application Gateway for Containers with its WAF policy (the
   biggest item), the AKS nodes and PostgreSQL Flexible Server bill by the hour while the lab is up.
   The bootstrap creates a monthly budget with alerts, but a budget only warns, it stops nothing.
   Destroy on the same day.
-- The `core` profile is the default: about US$0.513/hour with WAF (US$0.389/hour without). The
-  optional `full` profile is about US$0.524/hour with WAF (US$0.400/hour without) using two
-  `Standard_D2as_v5` nodes; 3 hours are about US$1.57 (US$1.20 without WAF). These are estimates,
-  exclude telemetry and Blob usage, and are not measured cloud costs. Choose `core` or `full` in the
-  `platform` workflow and follow the matching size settings in `docs/RUNBOOK.md`.
+- Core is default. Historical estimates: USD0.534/hour with WAF (USD0.410 without); full including PVCs USD0.551/hour (USD0.427 without). Full uses two Standard_D2as_v5 nodes. Three hours are about USD1.65/USD1.28. Exclusions and dated sources are in COSTS.md; follow matching sizing in RUNBOOK.md.
 - **Free Trial subscriptions restrict this lab**: v1 found PostgreSQL Flexible Server blocked in every
   region tried, AKS VM sizes refused and low quotas that cannot be raised
-  ([docs/RUNBOOK.md](docs/RUNBOOK.md), section 1, and [docs/LICOES_APRENDIDAS.md](docs/LICOES_APRENDIDAS.md)).
+  ([docs/RUNBOOK.md](docs/RUNBOOK.md), section 1, and [docs/LESSONS_LEARNED.md](docs/LESSONS_LEARNED.md)).
   Upgrading to pay-as-you-go lifts the offer restrictions and keeps the remaining credit.
 - Use a **dedicated subscription** (the budget and the leftover check cover all of it) where you are
   **Owner**, the Azure CLI and `jq`.
@@ -173,8 +168,7 @@ Then, from the root of your `tx02v2` clone:
    apply identity) and the variables you choose (`LAB_ALLOW_API_SERVER_FROM_ANYWHERE`):
    [docs/RUNBOOK.md](docs/RUNBOOK.md), section 3. Variables are not secret: never put a credential or
    your address in one.
-3. **Run**: from the Actions tab, `terraform-plan`, `terraform-apply` and `platform` (each one waits
-   for your approval of the `lab` environment), the app deploy from your `dx02v2`, the smoke test,
+3. **Run**: first configure the mandatory FinOps estimate inputs in RUNBOOK.md (LAB_FINOPS_PRICING_JSON, LAB_COST_BUDGET_USD, LAB_COST_HOURS, LAB_COST_EXPIRES_AT), and escrow LAB_VELERO_REPOSITORY_PASSWORD for full backup/DR. Then from the Actions tab, `terraform-plan` (no environment approval), then `terraform-apply` and `platform` (protected `lab` environment), then `publish-images` and `deploy-azure` from your `dx02v2`, the smoke test,
    then `terraform-destroy`, which ends with the leftover check: [docs/RUNBOOK.md](docs/RUNBOOK.md),
    sections 4 to 9. The workflows take `github_owner` from the owner of the repository. For the full
    platform profile, set `LAB_NODE_VM_SIZE=Standard_D2as_v5` and `LAB_NODE_COUNT=2` before plan and
@@ -221,6 +215,6 @@ request. Run `scripts/repo-guardrails.sh` again when `.github/rulesets/main.json
 Pull requests to the original repository are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md). Their
 workflow runs wait for the maintainer's approval, and the same harness decides.
 
-## R10: capacidade e FinOps
+## R10: capacity and FinOps
 
-Veja [FinOps e escala](docs/FINOPS.md) para kind HA, carga/HPA/PDB, OpenCost, VPA Off, Spot opt-in, preços regionais, orçamento/expiração e limpeza. Construção para fork; nada executado na nuvem (v2).
+See [FinOps and scaling](docs/FINOPS.md) for HA kind, load/HPA/PDB, OpenCost, VPA Off, opt-in Spot, regional rates, budget/expiration and cleanup. Built for forks; nothing in v2 has run in the cloud.

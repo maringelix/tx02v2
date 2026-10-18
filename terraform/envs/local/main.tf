@@ -1,4 +1,4 @@
-# Local lab: the Azure lab of tx02v2 emulated on the Docker daemon of this machine (docs/ARQUITETURA.md,
+# Local lab: the Azure lab of tx02v2 emulated on the Docker daemon of this machine (docs/ARCHITECTURE.md,
 # "Lab local"). Nothing here talks to Azure. Azure service -> local emulation:
 #   AKS -> kind cluster (Kubernetes 1.36)        ACR (Azure Container Registry) -> registry (Distribution 3)
 #   Azure Database for PostgreSQL Flexible Server 17 (TLS) -> postgres:17 (TLS only, lab CA)

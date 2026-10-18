@@ -160,7 +160,7 @@ run "the_lab_assigns_exactly_the_abac_roles" {
       "app-deployer-aks-cluster-user-eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee" = "4abbcc35-e782-43d8-92c5-2d3f1bd2253f eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ContainerService/managedClusters/tx02v2-lab"
       "app-deployer-appconfig-reader-eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee" = "516239f1-63e1-4d78-a4de-a74fb236a071 eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.AppConfiguration/configurationStores/tx02v2-lab-b602d594"
     }
-    error_message = "Lab role assignments must match docs/CONTRATO.md and docs/ARQUITETURA.md exactly."
+    error_message = "Lab role assignments must match docs/CONTRACT.md and docs/ARCHITECTURE.md exactly."
   }
 
   assert {

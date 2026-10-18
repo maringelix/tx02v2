@@ -1,7 +1,7 @@
 # AGENTS.md
 
 Instructions for AI coding agents and humans working in `tx02v2`. `CLAUDE.md` points here; this file
-is the source of truth. The full rule list (pt-BR) is [docs/GUARDRAILS.md](docs/GUARDRAILS.md).
+is the source of truth. The full rule list is [docs/GUARDRAILS.md](docs/GUARDRAILS.md).
 
 ## 1. Mission and context
 
@@ -10,18 +10,19 @@ is the source of truth. The full rule list (pt-BR) is [docs/GUARDRAILS.md](docs/
 - It must stay healthy without any cloud account: every claim is backed by the local harness or
   carries a status label (`verified in CI`, `verified locally`, `not run in the cloud (v2)`, `planned`).
 - Current status: `main` has the harness (`HARNESS_STRICT=1 make verify`) verified in CI (jobs
-  `static`, `test`; 32 checks before the local lab) and locally with the local lab. The R4 cloud full
-  profile in this branch awaits its PR CI checks.
+  `static`, `test`; 32 checks before the local lab) and locally with the local lab. The cloud full profile is implemented and its offline checks run in CI.
   **Nothing of v2 has run in Azure** (bootstrap, apply, plan, platform and destroy are
   `not run in the cloud (v2)`).
-- The local lab ([docs/LAB_LOCAL.md](docs/LAB_LOCAL.md)) rebuilds the whole v1 platform on Docker:
+- The local lab ([docs/LOCAL_LAB.md](docs/LOCAL_LAB.md)) rebuilds the whole v1 platform on Docker:
   `terraform/envs/local` (kind + emulated ACR, PostgreSQL Flexible Server, Blob Storage through an S3
   API emulator, load balancer, git server) and `platform/local` (Istio ambient, cert-manager, ESO,
   Prometheus/Alertmanager/Grafana, Loki/Alloy, Tempo and the OpenTelemetry Collector, Argo CD,
   Gatekeeper, Trivy Operator, Velero, Chaos Mesh). `make e2e` proves it with 34 probes (CI job `e2e`). It is not cloud-mutating: agents may run it, one heavy run at a time (8 GB of Docker
   memory for `full`, 7 GB with `LOCAL_SIZE=small`).
-- The interface with `dx02v2` is [docs/CONTRATO.md](docs/CONTRATO.md) (contract v3, owned here; the
+- The interface with `dx02v2` is [docs/CONTRACT.md](docs/CONTRACT.md) (contract v5, owned here; the
   local lab has its own local contract, `lab-system/lab-contract`).
+
+All public documentation, examples, comments and user-facing messages must remain in English. The [central getting-started guide](https://github.com/maringelix/tx00v2/blob/main/docs/GETTING_STARTED.md) coordinates onboarding.
 
 ## 2. Non-negotiable rules
 
@@ -52,7 +53,7 @@ is the source of truth. The full rule list (pt-BR) is [docs/GUARDRAILS.md](docs/
 .github/workflows/      ci.yml (harness), terraform-plan/apply/destroy.yml, platform.yml (cloud: dispatch; plan also on PRs)
 .github/rulesets/       main.json: branch ruleset applied by scripts/repo-guardrails.sh
 .devcontainer/          Linux environment + Docker-in-Docker, pinned by digest (runs make tools; make e2e works inside)
-docs/                   pt-BR docs: architecture, contract, runbook, costs, guardrails, harness, sustainment
+docs/                   English docs: architecture, contract, runbook, costs, guardrails, harness, maintenance
 FORK.md                 how to fork the lab: what GitHub does not copy, the local lab, your own cloud account
 platform/               install.sh / uninstall.sh / render-manifests.sh, versions.env, Helm values, manifests
 platform/local/         local platform: install.sh, check.sh (probes), uninstall.sh, versions.env, values/,
@@ -107,10 +108,10 @@ tools/                  versions.env and checksums.txt of the harness tools
 
 ## 7. Playbooks
 
-**Maintainer / sustentação.** Follow [docs/SUSTENTACAO.md](docs/SUSTENTACAO.md): react to a red
+**Maintainer / maintenance.** Follow [docs/MAINTENANCE.md](docs/MAINTENANCE.md): react to a red
 scheduled CI, merge monthly Dependabot PRs, run the quarterly review (tools, ALB Controller and ESO
 charts and digests, AKS/Azure Linux/PostgreSQL calendar, kubeconform schema commits, prices in
-`docs/CUSTOS.md`, ignores close to `expired_at`).
+`docs/COSTS.md`, ignores close to `expired_at`).
 
 **Reviewer.** Check the PR template boxes; confirm the harness is green; look for widened Azure roles
 (a new entry in `modules/role-ids` widens what the apply identity may assign), role assignments
@@ -120,7 +121,7 @@ bump.
 
 **Dependency updater.** One Dependabot group per PR. Read the release notes. Terraform providers:
 keep the same constraint in every `versions.tf` (modules included), regenerate both lock files for
-the four platforms and re-check what the provider refresh calls (docs/SUSTENTACAO.md 5.3 and 5.10).
+the four platforms and re-check what the provider refresh calls (docs/MAINTENANCE.md 5.3 and 5.10).
 Actions: confirm the new SHA matches the tag comment. Harness tools are bumped only with
 `scripts/update-tool-checksums.sh`. ALB Controller bumps go together with `dx02v2` (its CRD schemas).
 
@@ -145,9 +146,9 @@ with redacted identifiers. Never leave a lab running unattended.
   `BUILTIN_ROLE_IDS` of `scripts/harness.sh` (`policy-identifiers` checks it). The tests prove that
   the ABAC list equals the roles the lab root assigns.
 - Add a contract key: `terraform/envs/lab/contract.tf`, `CONTRACT_KEYS` in `scripts/harness.sh` and
-  the table of `docs/CONTRATO.md`, plus a coordinated `dx02v2` PR and a version bump.
+  the table of `docs/CONTRACT.md`, plus a coordinated `dx02v2` PR and a version bump.
 - Bump a harness tool: `scripts/update-tool-checksums.sh <tool> <version>`, then `make tools verify`.
-- Bump the ALB Controller or External Secrets: docs/SUSTENTACAO.md 5.5 / 5.6 (chart, SHA256, image
+- Bump the ALB Controller or External Secrets: docs/MAINTENANCE.md 5.5 / 5.6 (chart, SHA256, image
   digests, CRDs).
 - Add a check: docs/HARNESS.md ("Como adicionar um check").
 

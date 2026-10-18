@@ -103,6 +103,7 @@ REQUIRED_FILES=(
   tools/versions.env tools/checksums.txt
   scripts/install-tools.sh scripts/update-tool-checksums.sh scripts/harness.sh scripts/repo-guardrails.sh scripts/leftovers.sh
   scripts/destroy.sh scripts/tests/destroy-flow.sh scripts/tests/leftovers-flow.sh scripts/tests/local-preflight.sh
+  scripts/tests/cloud-install.sh scripts/tests/image-admission.sh
   scripts/lib/common.sh scripts/lib/tools.sh scripts/lib/azure.sh
   platform/install.sh platform/uninstall.sh platform/render-manifests.sh platform/versions.env
   scripts/lib/platform.sh scripts/platform-sizing.sh scripts/platform-sizing.awk
@@ -1044,7 +1045,7 @@ check_kubeconform() {
 }
 
 check_edge_acme() {
-  local file="$HARNESS_WORK_DIR/edge-acme.yaml" id
+  local file="$HARNESS_WORK_DIR/edge-acme.yaml" id dr_id target runtime
   need kubectl
   id=/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/tx02v2-lab/providers/Microsoft.ServiceNetworking/trafficControllers/tx02v2-lab-agc
   bash platform/render-edge-acme.sh lab.example.com you@example.com "$id" tx02v2-lab-frontend >"$file" || return $?
@@ -1072,6 +1073,27 @@ check_edge_acme() {
     echo "the ACME renderer accepted a frontend outside the lab"
     return 1
   fi
+  dr_id="${id%tx02v2-lab-agc}tx02v2-lab-dr-agc"
+  for target in primary secondary; do
+    runtime=tx02v2-lab
+    [[ "$target" != secondary ]] || runtime=tx02v2-lab-dr
+    bash platform/render-edge-acme.sh lab.example.com you@example.com "${id%tx02v2-lab-agc}$runtime-agc" "$runtime-frontend" "$target" >"$file" || return 1
+    grep -qF "alb.networking.azure.io/alb-id: ${id%tx02v2-lab-agc}$runtime-agc" "$file" || return 1
+    grep -qF "value: $runtime-frontend" "$file" || return 1
+  done
+  for bad in \
+    "$id|tx02v2-lab-frontend|secondary" \
+    "$dr_id|tx02v2-lab-dr-frontend|primary" \
+    "$dr_id|tx02v2-lab-frontend|secondary" \
+    "$id|tx02v2-lab-dr-frontend|primary" \
+    "${id%tx02v2-lab-agc}another-agc|another-frontend|primary" \
+    "$id|tx02v2-lab-frontend|arbitrary"; do
+    IFS='|' read -r invalid_id invalid_frontend invalid_target <<<"$bad"
+    if bash platform/render-edge-acme.sh lab.example.com you@example.com "$invalid_id" "$invalid_frontend" "$invalid_target" >/dev/null 2>&1; then
+      echo 'the ACME renderer accepted an unrelated runtime or a mixed regional pair'
+      return 1
+    fi
+  done
 }
 
 # The platform layer of contract v3, parsed from the rendered manifests (kubectl, no cluster):
@@ -1249,8 +1271,10 @@ check_contract_platform() {
 # that signs the promotion statement; the AGC CIDR remains the only plaintext edge exception.
 check_image_admission_policy() {
   local rc=0 file=platform/manifests/full/image-verification.yaml rendered="$HARNESS_WORK_DIR/image-verification.yaml"
+  bash scripts/tests/image-admission.sh || return 1
   for expected in \
     'kind: ImageValidatingPolicy' \
+    '    mode: Kubernetes' \
     'failurePolicy: Fail' \
     'validationActions:' \
     '    - Deny' \
@@ -1512,6 +1536,7 @@ check_helm_template_full() {
       content="${content//__VELERO_CLIENT_ID__/00000000-0000-0000-0000-000000000000}"
       content="${content//__TRIVY_CLIENT_ID__/$test_client_id}"
       content="${content//__KYVERNO_CLIENT_ID__/$test_client_id}"
+      content="${content//__OTEL_CLIENT_ID__/$test_client_id}"
       content="${content//__VELERO_STORAGE_ACCOUNT_URI__/$test_storage_uri}"
       content="${content//__S3_BUCKET__/tx02v2-lab-velero}"
       content="${content//__S3_ENDPOINT__/$test_storage_uri}"
@@ -1583,6 +1608,15 @@ check_helm_template_full() {
         'azure.workload.identity/use: "true"'; do
         grep -qF "$expected" "$rendered" || {
           echo "kyverno: image admission needs the Azure Workload ID service account and pod label ($expected)"
+          rc=1
+        }
+      done
+    fi
+    if [[ "$chart" == opentelemetry-collector ]]; then
+      for expected in 'azure.workload.identity/client-id: "00000000-0000-0000-0000-000000000000"' \
+        'azure.workload.identity/use: "true"' 'serviceAccountName: opentelemetry-collector'; do
+        grep -qF "$expected" "$rendered" || {
+          echo "opentelemetry-collector: full upgrade must retain its Azure Workload ID ($expected)"
           rc=1
         }
       done
@@ -1921,6 +1955,7 @@ register_checks() {
   register static backup-credentials 'bash scripts/tests/backup-credentials.sh'
   register static dr-current-secrets 'bash scripts/tests/dr-secrets.sh'
   register static region-target 'bash scripts/tests/region-target.sh'
+  register static cloud-install 'bash scripts/tests/cloud-install.sh'
   register static policy-workflows check_policy_workflows
   register static policy-scripts check_policy_scripts
   register static destroy-flow check_destroy_flow

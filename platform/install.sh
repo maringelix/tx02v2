@@ -58,6 +58,7 @@ AGC_SUBNET_CIDR=""
 VELERO_CLIENT_ID=""
 TRIVY_CLIENT_ID=""
 KYVERNO_CLIENT_ID=""
+OTEL_CLIENT_ID=""
 VELERO_STORAGE_ACCOUNT_URI=""
 AZURE_SUBSCRIPTION_ID=""
 AKS_NODE_RESOURCE_GROUP=""
@@ -263,6 +264,7 @@ install_chart() {
     content="${content//__VELERO_CLIENT_ID__/$VELERO_CLIENT_ID}"
     content="${content//__TRIVY_CLIENT_ID__/$TRIVY_CLIENT_ID}"
     content="${content//__KYVERNO_CLIENT_ID__/$KYVERNO_CLIENT_ID}"
+    content="${content//__OTEL_CLIENT_ID__/$OTEL_CLIENT_ID}"
     content="${content//__VELERO_STORAGE_ACCOUNT_URI__/$VELERO_STORAGE_ACCOUNT_URI}"
     content="${content//__AZURE_SUBSCRIPTION_ID__/$AZURE_SUBSCRIPTION_ID}"
     content="${content//__AKS_NODE_RESOURCE_GROUP__/$AKS_NODE_RESOURCE_GROUP}"
@@ -396,7 +398,7 @@ EOF
 
 install_edge_acme() {
   local rendered="$WORK_DIR/edge-acme.yaml"
-  bash "$HERE/render-edge-acme.sh" "$DNS_HOSTNAME" "$ACME_EMAIL" "$AGC_ID" "$AGC_FRONTEND" >"$rendered"
+  bash "$HERE/render-edge-acme.sh" "$DNS_HOSTNAME" "$ACME_EMAIL" "$AGC_ID" "$AGC_FRONTEND" "$TARGET" >"$rendered"
   kubectl apply -f "$rendered" >/dev/null
   if [[ "$TARGET" == secondary ]]; then
     log 'Standby ACME resources prepared; restore the current TLS Secret before the pre-DNS application smoke.'
@@ -527,6 +529,7 @@ main() {
   alb_client="$(identity_client_id "$rg" "$IDENTITY_PREFIX-alb")"
   eso_client="$(identity_client_id "$rg" "$IDENTITY_PREFIX-eso")"
   otel_client="$(identity_client_id "$rg" "$IDENTITY_PREFIX-otel")"
+  OTEL_CLIENT_ID="$otel_client"
   traces="$(traces_connection_string "$rg")"
   mask "$alb_client"
   mask "$eso_client"
@@ -555,4 +558,6 @@ main() {
   fi
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

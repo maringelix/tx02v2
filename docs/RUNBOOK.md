@@ -226,6 +226,11 @@ dx02v2 o referencia. Na renovação, a rota HTTP-01 mais específica continua ac
 o `dx02v2` só admite tráfego da subnet do AGC ao solver na porta 8089. Esta emissão pública e a
 renovação ainda não foram executadas em Azure.
 
+Com `target=secondary`, o mesmo renderer aceita somente `tx02v2-lab-dr-agc` com
+`tx02v2-lab-dr-frontend`, no resource group do lab; não permite misturar recursos das
+duas regiões. O standby prepara issuer/certificate sem esperar o desafio no DNS ainda
+primário. Restaure o Secret TLS e siga [CONTINUIDADE.md](CONTINUIDADE.md) antes do smoke.
+
 O instalador acrescenta Istio ambient com waypoint, observabilidade no
 cluster, Argo CD com GitOps, Gatekeeper, Kyverno, Trivy Operator, Velero Azure Blob e Chaos Mesh (16
 charts fixados no total). O app-of-apps lê `platform/gitops` do tx02v2 na branch `main`; o Argo CD acompanha o repositório
@@ -238,6 +243,13 @@ workflow `deploy-azure.yml` do fork. Trivy e Kyverno acessam o ACR por Workload 
 dois repositórios da aplicação. `platform/uninstall.sh` remove primeiro as Applications para impedir
 que o Argo CD recrie rotas durante o teardown, depois remove as policies Kyverno e os PVCs de
 monitoramento (discos `managed-csi` incluídos).
+
+O upgrade full reafirma a annotation de client ID do Collector, pois um novo `helm
+upgrade -f` não conserva automaticamente o `--set` da instalação core. A política de
+imagens usa modo de avaliação `Kubernetes` para os extratores de imagens de Pods.
+Confira no ensaio cloud tanto admissão de uma imagem assinada quanto rejeição de uma
+imagem sem atestação, e o recebimento de traces no Application Insights. Os checks
+offline descritos em [HARNESS.md](HARNESS.md) não substituem essas provas.
 
 O Velero grava recursos Kubernetes no container Blob privado com a identidade federada do ServiceAccount
 `velero/velero`; o R9 também protege bytes de volumes por FSB/Kopia, sem snapshots.

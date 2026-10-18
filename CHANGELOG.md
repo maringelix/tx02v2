@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Cloud-readiness audit: full standby ACME rendering now accepts only the exact primary or
+  secondary AGC/frontend pair selected by the operator. Mixed pairs and unrelated targets fail.
+- The full OpenTelemetry Collector upgrade explicitly retains its Azure Workload ID client-ID
+  annotation, rather than relying on values from the earlier core Helm release.
+- Image-signature admission uses Kyverno's Kubernetes evaluation mode for Pod image extractors.
+  Offline regression tests parse the rendered policy and reject JSON-mode/audit-only mutations;
+  installer fixtures execute the core/full functions with simulated external mutations and real
+  Helm value merging. Real Azure authentication, TLS issuance and signature admission still require
+  an approved cloud run; none has been executed in Azure (v2).
+
 - R9: build selectable regional platform/GitOps, current-credential synchronization, regional
   tracing, native lag alerts, RAGRS recovery reads and state option, plus portable PVC data backup.
 

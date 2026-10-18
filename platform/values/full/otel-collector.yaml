@@ -5,6 +5,10 @@
 # platform/local/values/otel-collector.yaml, which runs in monitoring: here the Collector stays in
 # observability, where the dx02v2 API already sends its spans). The ServiceMonitor needs the CRDs of
 # kube-prometheus-stack, installed before this release is upgraded.
+serviceAccount:
+  # Reassert on every full upgrade: values supplied to Helm replace the core --set values.
+  annotations:
+    azure.workload.identity/client-id: __OTEL_CLIENT_ID__
 ports:
   # Internal telemetry of the Collector (otelcol_receiver_accepted_spans, otelcol_exporter_sent_spans).
   metrics:

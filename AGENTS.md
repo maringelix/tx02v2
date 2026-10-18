@@ -150,7 +150,7 @@ with redacted identifiers. Never leave a lab running unattended.
 - Bump a harness tool: `scripts/update-tool-checksums.sh <tool> <version>`, then `make tools verify`.
 - Bump the ALB Controller or External Secrets: docs/MAINTENANCE.md 5.5 / 5.6 (chart, SHA256, image
   digests, CRDs).
-- Add a check: docs/HARNESS.md ("Como adicionar um check").
+- Add a check: docs/HARNESS.md ("Add a check").
 
 ## 9. When to stop and ask a human
 

@@ -5,7 +5,7 @@
 #
 # Soft delete cannot be disabled (7 days here, the minimum); purge protection stays off so a
 # deleted vault can be purged and its name reused. Purging needs a subscription-level permission
-# the CI identities do not have: docs/ARCHITECTURE.md ("A armadilha do soft delete").
+# the CI identities do not have: docs/ARCHITECTURE.md ("The soft-delete trap").
 
 # tflint-ignore: azurerm_resources_missing_prevent_destroy # lab data is disposable: every round ends with terraform destroy (docs/ARCHITECTURE.md)
 resource "azurerm_key_vault" "this" {

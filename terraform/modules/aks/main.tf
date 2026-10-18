@@ -1,4 +1,4 @@
-# AKS cluster of the lab (contract: docs/CONTRATO.md). Free tier control plane, Entra ID
+# AKS cluster of the lab (contract: docs/CONTRACT.md). Free tier control plane, Entra ID
 # authentication with Azure RBAC for Kubernetes authorization, local accounts disabled, OIDC
 # issuer + workload identity, Azure CNI Overlay with the Cilium dataplane (enforces
 # NetworkPolicy), one autoscaled system node pool on Azure Linux. Nothing here talks to the
@@ -35,7 +35,7 @@ resource "azurerm_kubernetes_cluster" "this" {
 
   # Public API server restricted to var.api_server_authorized_ip_ranges (0.0.0.0/0 needs
   # allow_api_server_from_anywhere = true in the root). Every request still needs an Entra ID
-  # token plus an Azure RBAC or Kubernetes RBAC grant (docs/ARQUITETURA.md).
+  # token plus an Azure RBAC or Kubernetes RBAC grant (docs/ARCHITECTURE.md).
   api_server_access_profile {
     authorized_ip_ranges = var.api_server_authorized_ip_ranges
   }

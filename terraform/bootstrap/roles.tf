@@ -21,7 +21,7 @@ locals {
   # The plan identity runs on pull requests, in a public repository, and its output goes to a public
   # job summary: it reads no data plane. `terraform plan -refresh=false` (the workflow) needs only the
   # management plane (Reader, for the data sources) and the state. A refresh would read the Key Vault
-  # secret values, the App Configuration keys and the AKS credentials (docs/ARQUITETURA.md, ADR 14).
+  # secret values, the App Configuration keys and the AKS credentials (docs/ARCHITECTURE.md, ADR 14).
   plan_roles = {
     "reader"            = { scope = local.lab_scope, role = "Reader" }
     "state-blob-reader" = { scope = local.state_scope, role = "Storage Blob Data Reader" }

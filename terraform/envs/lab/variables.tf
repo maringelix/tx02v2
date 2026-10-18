@@ -141,7 +141,7 @@ variable "api_server_authorized_ip_ranges" {
 
   validation {
     condition     = var.allow_api_server_from_anywhere || !contains(var.api_server_authorized_ip_ranges, "0.0.0.0/0")
-    error_message = "The CIDR 0.0.0.0/0 opens the API server to the whole Internet: set allow_api_server_from_anywhere = true to accept it explicitly (GitHub-hosted runners need it, see docs/ARQUITETURA.md)."
+    error_message = "The CIDR 0.0.0.0/0 opens the API server to the whole Internet: set allow_api_server_from_anywhere = true to accept it explicitly (GitHub-hosted runners need it, see docs/ARCHITECTURE.md)."
   }
 }
 
@@ -154,7 +154,7 @@ variable "allow_api_server_from_anywhere" {
 # --- AKS ---
 
 variable "kubernetes_version" {
-  description = "Kubernetes minor version of AKS. 1.36 is supported by AKS until June 2027 (docs/SUSTENTACAO.md)."
+  description = "Kubernetes minor version of AKS. 1.36 is supported by AKS until June 2027 (docs/MAINTENANCE.md)."
   type        = string
   default     = "1.36"
 
@@ -181,7 +181,7 @@ variable "spot_max_price" {
 }
 
 variable "node_vm_size" {
-  description = "VM size of the system node pool: at least 2 vCPU and 4 GiB, x86-64 (the dx02v2 images are linux/amd64), not B-series. Standard_D2als_v6 is the cheapest that qualifies in eastus2 (docs/CUSTOS.md)."
+  description = "VM size of the system node pool: at least 2 vCPU and 4 GiB, x86-64 (the dx02v2 images are linux/amd64), not B-series. Standard_D2als_v6 is the cheapest that qualifies in eastus2 (docs/COSTS.md)."
   type        = string
   default     = "Standard_D2als_v6"
 
@@ -194,7 +194,7 @@ variable "node_vm_size" {
   # system node pools": B-series VMs are not supported for system node pools (verified 2026-10-11).
   validation {
     condition     = !startswith(var.node_vm_size, "Standard_B")
-    error_message = "AKS does not support B-series VMs in a system node pool; use a size such as Standard_D2als_v6 (docs/CUSTOS.md)."
+    error_message = "AKS does not support B-series VMs in a system node pool; use a size such as Standard_D2als_v6 (docs/COSTS.md)."
   }
 }
 
@@ -265,7 +265,7 @@ variable "node_max_count" {
 }
 
 variable "enable_control_plane_logs" {
-  description = "Send AKS kube-audit-admin and guard logs to a Log Analytics workspace (billed per GB ingested, docs/CUSTOS.md)."
+  description = "Send AKS kube-audit-admin and guard logs to a Log Analytics workspace (billed per GB ingested, docs/COSTS.md)."
   type        = bool
   default     = false
 }
@@ -439,7 +439,7 @@ variable "dns_service_ip" {
 # --- Edge, data stores, secrets ---
 
 variable "enable_waf" {
-  description = "WAF policy (DRS 2.1 + Bot Manager 1.1, Prevention) on Application Gateway for Containers. Parity with tx01v2; about US$0.12/h more than without WAF (docs/CUSTOS.md)."
+  description = "WAF policy (DRS 2.1 + Bot Manager 1.1, Prevention) on Application Gateway for Containers. Parity with tx01v2; about US$0.12/h more than without WAF (docs/COSTS.md)."
   type        = bool
   default     = true
 }

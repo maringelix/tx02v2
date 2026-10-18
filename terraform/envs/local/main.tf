@@ -1,5 +1,5 @@
-# Local lab: the Azure lab of tx02v2 emulated on the Docker daemon of this machine (docs/ARQUITETURA.md,
-# "Lab local"). Nothing here talks to Azure. Azure service -> local emulation:
+# Local lab: the Azure lab of tx02v2 emulated on the Docker daemon of this machine (docs/ARCHITECTURE.md,
+# "Local lab"). Nothing here talks to Azure. Azure service -> local emulation:
 #   AKS -> kind cluster (Kubernetes 1.36)        ACR (Azure Container Registry) -> registry (Distribution 3)
 #   Azure Database for PostgreSQL Flexible Server 17 (TLS) -> postgres:17 (TLS only, lab CA)
 #   Blob Storage (backups) -> Versity S3 Gateway (speaks the S3 API, not the Blob API)

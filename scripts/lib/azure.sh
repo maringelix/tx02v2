@@ -3,7 +3,7 @@
 # Every function fails (non-zero) when the Azure call fails: callers must never treat an API error
 # as "nothing found". Requires the Azure CLI (az login, or OIDC through azure/login in CI).
 
-# Fixed by the contract (docs/CONTRATO.md). Never read from the environment: a shell that already
+# Fixed by the contract (docs/CONTRACT.md). Never read from the environment: a shell that already
 # exports RESOURCE_GROUP, CLUSTER_NAME or similar for other work must not retarget a script of the lab.
 LAB_PROJECT=tx02v2
 LAB_NAME=tx02v2-lab
@@ -100,7 +100,7 @@ load_contract() {
 
 # contract KEY -> value of tx02v2/lab/KEY (load_contract first).
 contract() {
-  [[ -n "${CONTRACT[$1]:-}" ]] || die "contract key ${LAB_KEY_PREFIX}$1 is missing or empty (docs/CONTRATO.md)"
+  [[ -n "${CONTRACT[$1]:-}" ]] || die "contract key ${LAB_KEY_PREFIX}$1 is missing or empty (docs/CONTRACT.md)"
   printf '%s' "${CONTRACT[$1]}"
 }
 

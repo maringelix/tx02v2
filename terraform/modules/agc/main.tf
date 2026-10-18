@@ -1,7 +1,7 @@
 # Application Gateway for Containers in the "bring your own" deployment mode: Terraform owns the
 # Azure resources (AGC, frontend, subnet association, WAF policy and its SecurityPolicy) and the
 # ALB Controller only programs them from the Gateway API objects of dx02v2. Destroying the lab
-# removes them with Terraform; nothing is created by the controller (docs/ARQUITETURA.md).
+# removes them with Terraform; nothing is created by the controller (docs/ARCHITECTURE.md).
 
 resource "azurerm_application_load_balancer" "this" {
   name                = "${var.name}-agc"

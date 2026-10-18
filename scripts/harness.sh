@@ -25,7 +25,7 @@ HARNESS_VERBOSE="${HARNESS_VERBOSE:-0}"
 HARNESS_WORK_DIR="${HARNESS_WORK_DIR:-${TMPDIR:-/tmp}/tx02v2-harness}"
 HARNESS_ONLY="${HARNESS_ONLY:-}"
 
-# Pinned schema sources of kubeconform (same pins as tx01v2; update procedure: docs/SUSTENTACAO.md).
+# Pinned schema sources of kubeconform (same pins as tx01v2; update procedure: docs/MAINTENANCE.md).
 K8S_SCHEMA_KUBERNETES_VERSION="1.36.0"
 K8S_SCHEMA_REF="5f1fa4f7908afc9b6641c62d282a4a22437626e1" # yannh/kubernetes-json-schema
 # datreeio/CRDs-catalog at 2026-06-02: its next revision of external-secrets.io/clustersecretstore_v1.json
@@ -41,7 +41,7 @@ RENDER_VAULT_URI="https://tx02v2-lab-00000000.vault.azure.net/"
 RENDER_DEPLOYERS=(00000000-0000-0000-0000-000000000000 11111111-1111-1111-1111-111111111111)
 RENDER_AGC_SUBNET_CIDR="10.20.4.0/24"
 
-# Contract v4 (docs/CONTRATO.md): the App Configuration keys under tx02v2/lab/ that dx02v2 reads.
+# Contract v4 (docs/CONTRACT.md): the App Configuration keys under tx02v2/lab/ that dx02v2 reads.
 CONTRACT_KEYS=(
   location resource-group cluster-name vnet-cidr agc-subnet-cidr postgres-subnet-cidr acr/login-server
   keyvault/uri db/secret-name app/admin-token-secret-name eso/cluster-secret-store agc/id agc/frontend-name
@@ -91,15 +91,15 @@ declare -A BUILTIN_ROLE_IDS=(
 )
 
 REQUIRED_FILES=(
-  README.md README.pt-BR.md AGENTS.md CLAUDE.md CONTRIBUTING.md SECURITY.md CHANGELOG.md LICENSE FORK.md
+  README.md AGENTS.md CLAUDE.md CONTRIBUTING.md SECURITY.md CHANGELOG.md LICENSE FORK.md
   .editorconfig .gitattributes .gitignore .pre-commit-config.yaml Makefile .tflint.hcl .trivyignore.yaml
   .devcontainer/devcontainer.json
   .github/CODEOWNERS .github/dependabot.yml .github/pull_request_template.md
   .github/ISSUE_TEMPLATE/config.yml .github/ISSUE_TEMPLATE/bug_report.yml .github/ISSUE_TEMPLATE/cloud_run_report.yml
   .github/workflows/ci.yml .github/workflows/terraform-plan.yml .github/workflows/terraform-apply.yml
   .github/workflows/platform.yml .github/workflows/terraform-destroy.yml .github/rulesets/main.json
-  docs/SUSTENTACAO.md docs/GUARDRAILS.md docs/HARNESS.md docs/CONTRATO.md docs/RUNBOOK.md
-  docs/ARQUITETURA.md docs/PUBLICACAO.md docs/CUSTOS.md docs/LICOES_APRENDIDAS.md
+  docs/MAINTENANCE.md docs/GUARDRAILS.md docs/HARNESS.md docs/CONTRACT.md docs/RUNBOOK.md
+  docs/ARCHITECTURE.md docs/PUBLISHING.md docs/COSTS.md docs/LESSONS_LEARNED.md
   tools/versions.env tools/checksums.txt
   scripts/install-tools.sh scripts/update-tool-checksums.sh scripts/harness.sh scripts/repo-guardrails.sh scripts/leftovers.sh
   scripts/destroy.sh scripts/tests/destroy-flow.sh scripts/tests/leftovers-flow.sh scripts/tests/local-preflight.sh
@@ -126,7 +126,7 @@ REQUIRED_FILES=(
   terraform/bootstrap/terraform.tfvars.example terraform/envs/lab/terraform.tfvars.example
   terraform/envs/lab/backend.hcl.example terraform/tests/mocks/azurerm.tfmock.hcl
   terraform/modules/role-ids/main.tf
-  docs/LAB_LOCAL.md
+  docs/LOCAL_LAB.md
   terraform/envs/local/.terraform.lock.hcl terraform/envs/local/kind-config.yaml
   scripts/local-lab.sh scripts/leftovers-local.sh scripts/local/kind-cluster.sh scripts/lib/local.sh
   platform/local/install.sh platform/local/uninstall.sh platform/local/check.sh platform/local/versions.env
@@ -345,8 +345,8 @@ check_repo_structure() {
     echo "README.md: more than 250 lines"
     rc=1
   fi
-  for f in README.md README.pt-BR.md; do
-    [[ -f "$f" ]] || continue
+  if [[ -f README.md ]]; then
+    f=README.md
     forbid 'production-grade|production-ready|enterprise|best-in-class|world-class' "self-ratings in $f" '*' "$f" || rc=1
     # v1 repositories are private or archived: never link them (tx01v2-style names end in v2).
     forbid 'github\.com/maringelix/(tx|dx)0[0-9]([^0-9v]|$)' "links to v1 repositories in $f" '*' "$f" || rc=1
@@ -356,15 +356,25 @@ check_repo_structure() {
       printf '%s: emojis are not allowed:\n%s\n' "$f" "$out"
       rc=1
     }
-  done
+  fi
   if [[ -f README.md ]] && ! grep -qF 'not run in the cloud (v2)' README.md; then
     echo "README.md: the status matrix must use the label 'not run in the cloud (v2)'"
     rc=1
   fi
-  if [[ -f README.pt-BR.md ]] && ! grep -qF 'não executado em nuvem (v2)' README.pt-BR.md; then
-    echo "README.pt-BR.md: the status matrix must use the label 'não executado em nuvem (v2)'"
+  if [[ -e README.pt-BR.md ]]; then
+    echo "README.pt-BR.md: public documentation is English-only"
     rc=1
   fi
+  if ! grep -qF 'verified in CI' README.md || ! grep -qF 'verified locally' README.md; then
+    echo "README.md: preserve English evidence status labels"
+    rc=1
+  fi
+  for f in README.md FORK.md AGENTS.md CONTRIBUTING.md; do
+    grep -qF 'https://github.com/maringelix/tx00v2/blob/main/docs/GETTING_STARTED.md' "$f" || {
+      echo "$f: link the central getting-started guide"
+      rc=1
+    }
+  done
   for d in terraform/modules/*/; do
     grep -q 'required_providers' "${d}versions.tf" 2>/dev/null || {
       echo "${d}versions.tf: missing required_providers"
@@ -1109,7 +1119,7 @@ check_contract_platform() {
   want="$(printf '%s\n' "external-secrets.io/v1 ClusterSecretStore/azure-key-vault" "rbac.authorization.k8s.io/v1 Role/dx02v2-deployer ns=dx02v2" \
     "rbac.authorization.k8s.io/v1 RoleBinding/dx02v2-deployers ns=dx02v2" "v1 Namespace/dx02v2" "v1 Namespace/observability" | sort)"
   [[ "$got" == "$want" ]] || {
-    printf 'platform/manifests must render exactly these objects (docs/CONTRATO.md):\n%s\ngot:\n%s\n' "$want" "$got"
+    printf 'platform/manifests must render exactly these objects (docs/CONTRACT.md):\n%s\ngot:\n%s\n' "$want" "$got"
     rc=1
   }
   for key in dx02v2 observability; do
@@ -1382,15 +1392,15 @@ check_contract_appconfig() {
     echo "terraform/envs/lab/main.tf: the App Configuration prefix must be tx02v2/lab/ (contract)"
     rc=1
   fi
-  if [[ -f docs/CONTRATO.md ]]; then
+  if [[ -f docs/CONTRACT.md ]]; then
     for key in "${CONTRACT_KEYS[@]}"; do
-      grep -qE "^\| \`$key\` \|" docs/CONTRATO.md || {
-        echo "docs/CONTRATO.md: contract key \`$key\` is not in the App Configuration table"
+      grep -qE "^\| \`$key\` \|" docs/CONTRACT.md || {
+        echo "docs/CONTRACT.md: contract key \`$key\` is not in the App Configuration table"
         rc=1
       }
     done
   else
-    echo "docs/CONTRATO.md is missing (repo-structure fails): checked contract.tf only"
+    echo "docs/CONTRACT.md is missing (repo-structure fails): checked contract.tf only"
   fi
   return "$rc"
 }
@@ -1631,13 +1641,13 @@ check_helm_template_full() {
   sizing="$(scripts/platform-sizing.sh 2 "$out")"
   sizing_cpu="$(sed -n 's/^cpu_millicores=//p' <<<"$sizing")"
   sizing_memory="$(sed -n 's/^memory_mib=//p' <<<"$sizing")"
-  docs_cpu="$(sed -nE 's#^[|][[:space:]]*full[[:space:]]*[|][[:space:]]*([0-9]+) mCPU / [0-9]+ MiB[[:space:]]*[|].*#\1#p' docs/CUSTOS.md)"
-  docs_memory="$(sed -nE 's#^[|][[:space:]]*full[[:space:]]*[|][[:space:]]*[0-9]+ mCPU / ([0-9]+) MiB[[:space:]]*[|].*#\1#p' docs/CUSTOS.md)"
+  docs_cpu="$(sed -nE 's#^[|][[:space:]]*full[[:space:]]*[|][[:space:]]*([0-9]+) mCPU / [0-9]+ MiB[[:space:]]*[|].*#\1#p' docs/COSTS.md)"
+  docs_memory="$(sed -nE 's#^[|][[:space:]]*full[[:space:]]*[|][[:space:]]*[0-9]+ mCPU / ([0-9]+) MiB[[:space:]]*[|].*#\1#p' docs/COSTS.md)"
   if [[ -z "$docs_cpu" || -z "$docs_memory" ]]; then
-    echo "docs/CUSTOS.md: missing the full-profile requests row"
+    echo "docs/COSTS.md: missing the full-profile requests row"
     rc=1
   elif [[ "$sizing_cpu" != "$docs_cpu" || "$sizing_memory" != "$docs_memory" ]]; then
-    printf 'R4.7 sizing differs: rendered %s mCPU / %s MiB; docs/CUSTOS.md says %s mCPU / %s MiB\n' \
+    printf 'R4.7 sizing differs: rendered %s mCPU / %s MiB; docs/COSTS.md says %s mCPU / %s MiB\n' \
       "$sizing_cpu" "$sizing_memory" "$docs_cpu" "$docs_memory"
     rc=1
   fi

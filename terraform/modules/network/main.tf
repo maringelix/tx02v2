@@ -2,7 +2,7 @@
 # an NSG that lets only the AKS node subnet reach PostgreSQL on 5432, and the private DNS zone of
 # the Flexible Server linked to the VNet. CIDRs are validated by the calling root.
 #
-# Not here on purpose (docs/ARQUITETURA.md): NSG flow logs (being retired by Azure) and VNet flow
+# Not here on purpose (docs/ARCHITECTURE.md): NSG flow logs (being retired by Azure) and VNet flow
 # logs (they need a Network Watcher in NetworkWatcherRG, outside the lab resource group the CI
 # identities are scoped to, plus a storage account); no NSG on the AKS node subnet (AKS manages
 # the NSG of the node NICs) or on the AGC subnet (traffic AGC -> pods is filtered by the app

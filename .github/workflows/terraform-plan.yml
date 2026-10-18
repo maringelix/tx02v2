@@ -89,7 +89,7 @@ jobs:
           done
           if ((${#problems[@]} > 0)); then
             printf '::error::Repository variable problem: %s\n' "${problems[@]}"
-            echo "::error::Settings > Secrets and variables > Actions (the lists of people and addresses are secrets, the rest variables); names and values in docs/RUNBOOK.md (section 'Variáveis do GitHub')."
+            echo "::error::Settings > Secrets and variables > Actions (the lists of people and addresses are secrets, the rest variables); names and values in docs/RUNBOOK.md (section 'GitHub variables and secrets')."
             exit 1
           fi
           # Identifiers never reach the logs of a public repository.

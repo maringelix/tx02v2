@@ -68,7 +68,7 @@ variable "database_name" {
 }
 
 variable "administrator_login" {
-  description = "Admin user (the lab app uses it, see docs/ARQUITETURA.md)."
+  description = "Admin user (the lab app uses it, see docs/ARCHITECTURE.md)."
   type        = string
   default     = "dx02v2_admin"
 }

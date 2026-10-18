@@ -1,4 +1,4 @@
-# App Configuration store of the cross-repo contract (docs/CONTRATO.md): Free tier, access keys
+# App Configuration store of the cross-repo contract (docs/CONTRACT.md): Free tier, access keys
 # disabled (Entra ID + RBAC only), one key-value per contract key, no labels, prefix tx02v2/lab/.
 # The identity that applies the lab needs App Configuration Data Owner (granted by
 # terraform/bootstrap); dx02v2-gha-deploy reads with App Configuration Data Reader.

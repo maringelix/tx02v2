@@ -1,7 +1,7 @@
 # open-telemetry/opentelemetry-collector (chart OTEL_COLLECTOR_CHART_VERSION of platform/versions.env),
 # namespace observability: the entry point of the traces of the lab in Azure, the same Collector as the
 # local lab (platform/local/values/otel-collector.yaml, same image digest). The dx02v2 API sends
-# OTLP/HTTP to opentelemetry-collector.observability.svc:4318 (docs/CONTRATO.md); the Collector adds the
+# OTLP/HTTP to opentelemetry-collector.observability.svc:4318 (docs/CONTRACT.md); the Collector adds the
 # Kubernetes attributes of the sender and writes the spans to the Application Insights tx02v2-lab-traces
 # with a Microsoft Entra token (extension azure_auth, Workload ID of tx02v2-lab-otel: the webhook injects
 # AZURE_CLIENT_ID, AZURE_TENANT_ID and AZURE_FEDERATED_TOKEN_FILE). Local authentication is off on that

@@ -2,7 +2,7 @@
 # subnet + private DNS zone). The admin password arrives as an ephemeral value and is sent only
 # through the write-only argument administrator_password_wo: it never reaches the plan or state.
 
-# tflint-ignore: azurerm_resources_missing_prevent_destroy # lab data is disposable: every round ends with terraform destroy (docs/ARQUITETURA.md)
+# tflint-ignore: azurerm_resources_missing_prevent_destroy # lab data is disposable: every round ends with terraform destroy (docs/ARCHITECTURE.md)
 resource "azurerm_postgresql_flexible_server" "this" {
   name                = "${var.name}-postgres"
   location            = var.location
@@ -60,7 +60,7 @@ resource "azurerm_postgresql_flexible_server_configuration" "this" {
   value     = each.value
 }
 
-# tflint-ignore: azurerm_resources_missing_prevent_destroy # lab data is disposable: every round ends with terraform destroy (docs/ARQUITETURA.md)
+# tflint-ignore: azurerm_resources_missing_prevent_destroy # lab data is disposable: every round ends with terraform destroy (docs/ARCHITECTURE.md)
 resource "azurerm_postgresql_flexible_server_database" "app" {
   name      = var.database_name
   server_id = azurerm_postgresql_flexible_server.this.id

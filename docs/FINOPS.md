@@ -1,135 +1,132 @@
-# R10 — escala, capacidade e FinOps
+# R10: scaling, capacity and FinOps
 
-## Estado e pré-requisitos
+## Status and prerequisites
 
-Construção para fork; nenhuma operação foi executada em Azure (v2).
-O CI executa Docker. Os comandos cloud abaixo exigem a rodada autorizada do dono
-do fork, domínio/conta e orçamento próprios. FinOps é opt-in, perfil full.
-O caminho local padrão continua com um nó; o ensaio de capacidade usa três nós
-kind e recomenda 12 GiB disponíveis no Docker. Não combine HA com LOCAL_SIZE=small.
+Built for forks; no operation has run in Azure (v2).
+CI runs Docker. The cloud commands below require the fork owner's approved exercise, their
+own domain/account and budget. FinOps is opt-in and requires the full profile.
+The default local topology remains one node; the capacity drill uses three kind nodes and
+recommends 12 GiB available to Docker. Do not combine HA with `LOCAL_SIZE=small`.
 
-## Aula local: HPA, PDB e interrupção
+## Local lesson: HPA, PDB and disruption
 
-Em Linux/devcontainer, execute:
+On Linux or in the devcontainer, run:
 
     make tools
     LOCAL_TOPOLOGY=ha LOCAL_FINOPS=1 make e2e
 
-scripts/local/capacity-drill.sh cria um namespace exclusivo e recusa adotá-lo
-caso já exista. Uma fixture Node fixada por digest gera CPU numa worker thread;
-o HTTP fica responsivo. A sonda exige HPA 1 → 3 → 1 sob carga limitada,
-recusa de eviction do último pod pelo PDB, drenagem de um worker pertencente ao
-kind e redistribuição dos três pods nos nós restantes. A drenagem usa seletor
-somente da fixture: não remove os pods persistentes da plataforma.
+`scripts/local/capacity-drill.sh` creates a dedicated namespace and refuses to adopt an existing
+one. A digest-pinned Node fixture generates CPU load in a worker thread, keeping HTTP responsive.
+The probe requires HPA 1 → 3 → 1 under bounded load, rejection of eviction of the last Pod by its
+PDB, draining a worker owned by kind, and redistribution of all three Pods across the remaining
+nodes. The drain selects only the fixture, preserving the platform's persistent Pods.
 
-O cliente acessa o Service durante a drenagem, mede erro <= 1% e p99 <= 1 s,
-sem usar port-forward para um pod. A limpeza sempre descordona o nó e remove
-o namespace criado. Falhas mostram pods/HPA/PDB/VPA/eventos; não imprimem Secrets.
-O relatório JSON contém as medidas e os critérios. As sondas anteriores de
-mesh, backup, PITR, observabilidade, políticas e Chaos continuam obrigatórias.
+The client accesses the Service throughout draining, measuring errors <= 1% and p99 <= 1 s.
+It does not port-forward to an individual Pod. Cleanup always uncordons the node and deletes the
+created namespace. Failures show Pods/HPA/PDB/VPA/events without printing Secrets. The JSON
+report contains measurements and acceptance criteria. Existing mesh, backup, PITR, observability,
+policy and Chaos probes remain mandatory.
 
-O VPA precisa produzir uma recomendação, mantendo updateMode Off e os requests
-originais. OpenCost precisa retornar custo positivo medido para o namespace da
-fixture pela API /allocation. As tarifas locais são uma simulação determinística,
-explicitamente identificada em platform/finops/pricing/local.json.
+VPA must produce a recommendation while retaining `updateMode Off` and the original requests.
+OpenCost must return positive measured cost for the fixture namespace through `/allocation`.
+Local rates are a deterministic simulation explicitly identified in
+`platform/finops/pricing/local.json`.
 
-## AKS autoscaler e Spot
+## AKS autoscaler and Spot
 
-O pool system tem autoscaler habilitado e mínimo on-demand >=1. O pool user Spot
-é opt-in: enable_spot_pool=true (LAB_ENABLE_SPOT_POOL), 0-2 nós, taint explícito,
-eviction_policy Delete e spot_max_price positivo (LAB_SPOT_MAX_PRICE). O valor é
-um teto de lance do operador, sem promessa de disponibilidade nem tarifa real.
-O módulo aplica as mesmas regras ao cluster DR. Serviços críticos ficam no pool
-regular; a capacidade gerenciada só recebe evidência após homologação cloud.
+The system pool has autoscaling enabled and an on-demand minimum >= 1. The user Spot pool is
+opt-in: `enable_spot_pool=true` (`LAB_ENABLE_SPOT_POOL`), 0–2 nodes, an explicit taint,
+`eviction_policy Delete`, and a positive `spot_max_price` (`LAB_SPOT_MAX_PRICE`). This is an
+operator-selected maximum bid, with no promise of availability or actual price.
+The module applies the same rules to the DR cluster. Critical services remain on the regular
+pool; managed capacity receives evidence only after cloud validation.
 
-Na rodada autorizada, aplique platform/finops/manifests/spot-job.yaml após habilitar
-o pool. Observe eventos/escala/nó. Sem Spot, cancele o Job e execute cópia com outro
-nome, removendo seletor/toleration Spot e selecionando agentpool=system. Preserve
-o deadline e registre custo/resultado. Não deixe tentativa pendente indefinidamente.
-A drenagem kind comprova PDB/rescheduling, sem comprovar retomada de um pool Azure.
+During an approved run, apply `platform/finops/manifests/spot-job.yaml` after enabling the pool.
+Observe events, scaling and the selected node. If Spot is unavailable, cancel the Job and run
+a differently named copy without its Spot selector/toleration, selecting `agentpool=system`.
+Preserve its deadline and record cost/results. Do not leave an attempt pending indefinitely.
+Draining kind proves PDB/rescheduling behavior, not recovery of an Azure pool.
 
-## Tarifas e instalação
+## Rates and installation
 
-OpenCost 2.5.33 / 1.121.3 e VPA 0.14.0 / 1.8.0 têm archives SHA256 e imagens
-fixados em platform/finops/versions.env e nos values. A API é ClusterIP,
-UI/MCP/cloud billing ingestion ficam desligados. O exporter usa preços configurados
-e Prometheus existente; não recebe credenciais de faturamento.
+OpenCost 2.5.33 / 1.121.3 and VPA 0.14.0 / 1.8.0 have SHA256-pinned archives and images in
+`platform/finops/versions.env` and the values files. The API is ClusterIP; UI, MCP and cloud
+billing ingestion remain disabled. The exporter uses configured prices and the existing
+Prometheus; it receives no billing credentials.
 
-Para cloud, forneça FINOPS_PRICING_FILE: JSON com cloud=azure, region da região
-selecionada, currency=USD, mode=estimate, source HTTPS, asOf revisado nos últimos
-31 dias, description, cpuPerCoreHour, ramPerGiBHour e storagePerGiBHour como
-strings decimais positivas. Consulte os preços atuais do provedor; não reutilize
-a simulação local como cotação. Spot usa a tarifa on-demand como limite conservador.
+For cloud runs, provide `FINOPS_PRICING_FILE`: JSON with `cloud=azure`, the selected `region`,
+`currency=USD`, `mode=estimate`, an HTTPS `source`, `asOf` reviewed within the past 31 days,
+`description`, and positive decimal strings for `cpuPerCoreHour`, `ramPerGiBHour` and
+`storagePerGiBHour`. Check current provider prices; the local simulation is not a quotation.
+Spot uses the on-demand rate as a conservative upper bound.
 
-Na rodada autorizada, o instalador aceita --profile full --finops. O workflow
-platform tem input finops e obtém as tarifas da variável LAB_FINOPS_PRICING_JSON.
-Secondary precisa de tarifas da região secondary. Valores errados/stale falham.
-O dashboard Grafana "Lab FinOps" mostra CPU/RAM por namespace e explica idle/shared.
-Compare /allocation?window=1h&aggregate=namespace&includeIdle=true e
-aggregate=label:cost_lab_owner para showback. Labels de owner/ambiente são obrigatórios
-nas aulas; os DX verificam os próprios manifests e fazem rightsizing sob SLO.
+During the approved run, the installer accepts `--profile full --finops`. The `platform` workflow
+has a `finops` input and obtains rates from `LAB_FINOPS_PRICING_JSON`. Secondary requires rates
+for the secondary region. Incorrect or stale inputs fail.
+The Grafana dashboard "Lab FinOps" shows namespace CPU/RAM and explains idle/shared costs.
+Compare `/allocation?window=1h&aggregate=namespace&includeIdle=true` and
+`aggregate=label:cost_lab_owner` for showback. Owner/environment labels are mandatory in the
+lessons; DX repositories check their own manifests and exercise rightsizing under an SLO.
 
-## Estimativa antes do apply e expiração
+## Estimate before apply and expiration
 
-Os workflows terraform-plan e terraform-apply chamam scripts/cost-workflow.sh
-depois de salvar tfplan; apply só ocorre se o gate passar.
-Configure LAB_FINOPS_PRICING_JSON, LAB_COST_BUDGET_USD, LAB_COST_HOURS (<=24)
-e LAB_COST_EXPIRES_AT (UTC nas próximas 24h). Atualize o prazo a cada rodada.
-O prazo precisa caber na duração orçada. São entradas públicas sem identificadores.
+The `terraform-plan` and `terraform-apply` workflows call `scripts/cost-workflow.sh` after saving
+`tfplan`; apply proceeds only if the gate passes.
+Configure `LAB_FINOPS_PRICING_JSON`, `LAB_COST_BUDGET_USD`, `LAB_COST_HOURS` (<= 24), and
+`LAB_COST_EXPIRES_AT` (UTC within the next 24 hours). Refresh the deadline for each run.
+The budgeted duration must cover the deadline. These public inputs contain no identifiers.
 
-Para preparar a planilha de revisão fora do CI:
+To prepare the review worksheet outside CI:
 
     umask 077
     terraform -chdir=terraform/envs/lab show -json tfplan > /tmp/plan-private.json
     bash scripts/cost-pricing-template.sh azure eastus2 /tmp/plan-private.json /tmp/rates.json
 
-A planilha é deliberadamente incompleta: preencha todos os tipos com custo por
-recurso/hora na MAIOR configuração prevista (HA/DR, nós máximos, tamanhos de DB).
-Use zero somente para tipos sem cobrança ou já incluídos, registrando a justificativa.
-O gate recusa qualquer tipo sem preço. Também exige as categorias externas backup,
-controlPlane, database, dr, egress, loadBalancer, nat, storage e waf, inclusive zero justificado para evitar
-dupla contagem. Isso cobre custos dos controladores fora do Terraform.
-As tarifas de CPU/RAM/disco do OpenCost e o inventário do plano são complementares:
-não some os dois relatórios como se fossem faturas independentes.
+The worksheet is intentionally incomplete: fill every resource type with a per-resource hourly
+cost at the LARGEST planned configuration (HA/DR, maximum nodes, database sizes).
+Use zero only for unbilled or already included types, recording the justification.
+The gate rejects any unpriced type. It also requires external categories `backup`,
+`controlPlane`, `database`, `dr`, `egress`, `loadBalancer`, `nat`, `storage` and `waf`,
+including justified zeros to prevent double counting. These cover controller-created costs outside
+Terraform. OpenCost CPU/RAM/disk rates and the plan inventory are complementary; do not sum the
+reports as if they were separate invoices.
 
-O JSON do plano pode conter segredos e nunca é artefato público. O relatório
-mostra apenas tipos, contagens, tarifas, fonte/data, total, budget e expiração.
-As fixtures do CI provam aritmética, rejeição de cenário caro, tarifas antigas e
-recursos não precificados. Não são preços de GCP.
+Plan JSON can contain secrets and must never become a public artifact. The report shows only
+types, counts, rates, source/date, total, budget and expiration. CI fixtures prove arithmetic and
+rejection of expensive scenarios, stale rates and unpriced resources. They are not Azure prices.
 
-Budget é alerta e este gate é estimativa: nenhum deles limita faturamento.
-A expiração bloqueia novos plans/applies com prazo vencido e exige destruir ao fim
-da aula; não cria um robô com credencial para destruir contas. Use o teardown
-existente, verifique o inventário de sobras e registre retenções de backup/state
-que continuam cobrando. Interrompa carga no deadline mesmo se o exercício falhar.
+The budget is an alert and this gate is an estimate; neither caps billing.
+Expiration blocks new plans/applies after the deadline and requires teardown at the end of the
+lesson. It does not create an account-destruction bot with credentials. Use the existing teardown,
+check leftovers, and record backup/state retention that continues to incur charges.
+Stop load at the deadline even when the exercise fails.
 
-## Diagnóstico e limites
+## Diagnosis and limits
 
-Sem HPA: veja metrics-server, requests e ScalingActive. Sem rescheduling: veja
-cordon, PDB, afinidade, quotas e eventos. VPA Off nunca atualiza requests sozinho.
-Sem alocação: confira ServiceMonitor, targets do Prometheus, janela com amostras,
-permissões de leitura do exporter e preços. Sem preço regional revisado, o gate falha.
-Compare carga/SLO antes e depois; não declare economia apenas reduzindo requests.
+No HPA: inspect metrics-server, requests and `ScalingActive`. No rescheduling: inspect cordon,
+PDB, affinity, quotas and events. VPA Off never updates requests automatically.
+No allocation: inspect ServiceMonitor, Prometheus targets, a window with samples, exporter read
+permissions and prices. Without reviewed regional pricing, the gate fails.
+Compare load/SLO before and after; reducing requests alone does not establish savings.
 
-Leia [OpenCost Helm](https://opencost.io/docs/installation/helm/),
-[API de alocação](https://opencost.io/docs/integrations/api-examples/),
-[Autoscaler AKS](https://learn.microsoft.com/azure/aks/cluster-autoscaler)
-e [Spot no AKS](https://learn.microsoft.com/azure/aks/spot-node-pool).
+Read [OpenCost Helm](https://opencost.io/docs/installation/helm/),
+[allocation API](https://opencost.io/docs/integrations/api-examples/),
+[AKS autoscaler](https://learn.microsoft.com/azure/aks/cluster-autoscaler) and
+[AKS Spot](https://learn.microsoft.com/azure/aks/spot-node-pool).
 
-### Custo externo, idle e owner no dashboard
+### External cost, idle and owner on the dashboard
 
-O arquivo de tarifas também exige externalHourly com backup, controlPlane, database,
-dr, egress, loadBalancer, nat, storage e waf (USD/h). Zero exige justificativa de
-inclusão/ausência; evite contar o mesmo custo no recurso Terraform e na categoria
-externa. O instalador cria a recording rule lab_external_hourly_estimate; o dashboard
-mostra as categorias, owner/ambiente, infraestrutura compartilhada e idle estimado.
-Kube-state-metrics expõe somente as duas labels de showback adicionais. A simulação
-local tem externos zero; tarifas cloud são preenchidas pelo dono do fork.
+The rates file also requires `externalHourly` with `backup`, `controlPlane`, `database`,
+`dr`, `egress`, `loadBalancer`, `nat`, `storage` and `waf` (USD/h). A zero requires an
+inclusion/no-charge justification; do not count the same cost in both the Terraform resource
+and an external category. The installer creates recording rule `lab_external_hourly_estimate`;
+the dashboard shows categories, owner/environment, shared infrastructure and estimated idle.
+Kube-state-metrics exposes only the two additional showback labels. The local simulation has
+zero external costs; the fork owner fills in cloud rates.
 
-LimitRange preenche limites ausentes antes da quota (CPU 1, RAM 512Mi por container;
-requests padrão 10m/64Mi). Requests/limits explícitos são preservados, incluindo os
-recursos dos proxies. A quota continua bloqueante.
+LimitRange supplies missing limits before quota (CPU 1, RAM 512Mi per container; default requests
+10m/64Mi). Explicit requests/limits remain intact, including proxy resources. Quota stays enforced.
 
-Para o plano com DR, estime o maior SKU e a maior tarifa entre as regiões abrangidas;
-registre essa escolha na descrição da fonte. No Autopilot, idle de nós é um modelo
-de capacidade e não cobrança de VM ociosa: a alocação usa requests dos pods.
+For a DR plan, estimate the largest SKU and highest rate across the covered regions; record this
+choice in the source description. For the family's Autopilot comparison, node idle is a capacity
+model rather than an idle-VM bill: allocation uses Pod requests.

@@ -1,5 +1,5 @@
 # Applies terraform/envs/lab. CLOUD-MUTATING and billable (Application Gateway for Containers with
-# its WAF is the biggest item, docs/CUSTOS.md): dispatch manually, after reading the latest
+# its WAF is the biggest item, docs/COSTS.md): dispatch manually, after reading the latest
 # terraform-plan run. The `lab` environment (required reviewer, main only) gates the federated
 # credential of tx02v2-gha-apply (subject repo:<owner>/tx02v2:environment:lab). Terraform logs in
 # with OIDC through the ARM_* variables. Not run in the cloud yet (v2).
@@ -82,7 +82,7 @@ jobs:
           done
           if ((${#problems[@]} > 0)); then
             printf '::error::Repository variable problem: %s\n' "${problems[@]}"
-            echo "::error::Settings > Secrets and variables > Actions (the lists of people and addresses are secrets, the rest variables); names and values in docs/RUNBOOK.md (section 'Variáveis do GitHub')."
+            echo "::error::Settings > Secrets and variables > Actions (the lists of people and addresses are secrets, the rest variables); names and values in docs/RUNBOOK.md (section 'GitHub variables and secrets')."
             exit 1
           fi
           # Identifiers never reach the logs of a public repository.

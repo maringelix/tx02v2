@@ -21,11 +21,10 @@ Forking the lab to run it on your own machine and cloud account? Start with [FOR
   (`00000000-0000-0000-0000-000000000000`).
 - Do not weaken checks or add scanner ignores without `statement` and `expired_at`.
 - Explain any Azure role, network, Kubernetes RBAC or CORS widening in the PR.
-- Contract changes (`docs/CONTRATO.md`) need a coordinated PR in `dx02v2` and a version bump.
+- Contract changes (`docs/CONTRACT.md`) need a coordinated PR in `dx02v2` and a version bump.
 - Pin new actions (full commit SHA + `# vX.Y.Z`), charts and images (SHA256/digest) and tools
   (version + SHA256).
-- Docs live in Brazilian Portuguese (`docs/`, `README.pt-BR.md`); `README.md`, `AGENTS.md`,
-  `CONTRIBUTING.md`, `SECURITY.md` and `CHANGELOG.md` in English.
+- All public documentation, examples, comments and user-facing messages must be in English. Preserve technical identifiers and historical evidence. Start with the [central getting-started guide](https://github.com/maringelix/tx00v2/blob/main/docs/GETTING_STARTED.md).
 
 ## Cloud runs
 

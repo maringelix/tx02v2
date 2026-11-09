@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Dependency round of 2026-11-09: azurerm 5.9.0 -> 5.12.0 in the `terraform/bootstrap` and
+  `terraform/envs/lab` lock files and TLS provider 4.4.1 -> 4.4.2 in `terraform/envs/local`
+  (Dependabot #21). The roots declare the same data sources as before, so the plan-role review of
+  `docs/MAINTENANCE.md` section 5.10 grants nothing new. The capacity image `node:24-alpine3.24`
+  moves to digest `a34ab6d7` (Node.js 24.22.2), the digest of the dx build images. Nothing ran in
+  Azure.
+
 ### Documentation
 
 - Correct the security description of existing AGC plaintext edge exceptions: web:8080, API:3000 and temporary ACME solver:8089 are workload-scoped PERMISSIVE paths restricted by delegated-subnet authorization/NetworkPolicy; other ports remain STRICT. No policy behavior changed.

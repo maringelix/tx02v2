@@ -44,7 +44,7 @@ runs. Application maintenance lives in dx02v2; coordinated changes are listed he
 | Azure Linux nodes | 3.0, AzureLinux on AKS>=1.32 | About three years after 1.32, no exact date.2.0 unsupported since 2025-11-30; image removal from 2026-10-31 | [Support cycle](https://learn.microsoft.com/azure/azure-linux/aks-support-cycle) | Track3.0 end date/successor |
 | PostgreSQL Flexible | 17 | Azure standard support through 2029-11-08, then paid Extended Support | [Version policy](https://learn.microsoft.com/azure/postgresql/configure-maintain/concepts-version-policy) | Major upgrade/contract+DX PR before date |
 | Terraform | 1.16.5, >=1.11,<2 | No fixed date | [Releases](https://releases.hashicorp.com/terraform/) | Quarterly section 5.2 |
-| azurerm | 5.9.0, ~>5.9 | No fixed date; major6 needs migration; Dependabot ignores majors | registry.terraform.io | Monthly section 5.3, reassess plan roles section 5.10 |
+| azurerm | 5.12.0 (2026-11-09), ~>5.9 | No fixed date; major6 needs migration; Dependabot ignores majors | registry.terraform.io | Monthly section 5.3, reassess plan roles section 5.10 |
 | random | 3.9.1, ~>3.9 | No fixed date | registry.terraform.io | Monthly |
 | ALB Controller | 1.12.2, Gateway API1.5.1, minimum Kubernetes 1.32 | No published EOL; AKS add-on uses1.11.x with AKS 1.36+ | [Release notes](https://learn.microsoft.com/azure/application-gateway/for-containers/alb-controller-release-notes) | Quarterly section 5.5 with DX |
 | ESO | 2.12.0/chart2.12.0, external-secrets.io/v1 | Recent versions maintained | [Releases](https://github.com/external-secrets/external-secrets/releases) | Quarterly section 5.6 with TX01 |
